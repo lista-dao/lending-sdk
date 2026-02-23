@@ -1,6 +1,6 @@
 {
-  "name": "@lista-dao/moolah-sdk-core",
-  "version": "0.1.2",
+  "name": "@lista-dao/moolah-lending-sdk",
+  "version": "0.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -26,7 +26,8 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@morpho-org/blue-sdk": "^2.3.2",
+    "@lista-dao/moolah-sdk-core": "workspace:*",
+    "@morpho-org/blue-sdk": "^1.1.1",
     "viem": "^2.22.10"
   },
   "devDependencies": {

@@ -13,9 +13,9 @@
     "check:types": "pnpm -r --filter './packages/*' run check:types",
     "test": "pnpm -r --filter './packages/*' run test",
     "clean": "pnpm -r exec rimraf dist node_modules",
+    "watch:core": "pnpm --filter '@lista-dao/moolah-sdk-core' run build --watch",
     "version": "changeset version",
-    "release": "changeset version && pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --access public --no-git-checks",
-    "release:local": "pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --no-git-checks"
+    "release": "changeset version && pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --access public --no-git-checks"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
