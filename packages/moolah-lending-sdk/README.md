@@ -45,13 +45,36 @@ for (const step of steps) {
 
 ```typescript
 interface StepParam {
-  stepType: "approve" | "main";
+  step:
+    | "approve"
+    | "supply"
+    | "borrow"
+    | "repay"
+    | "withdraw"
+    | "depositVault"
+    | "withdrawVault"
+    | "supplySmartDexLp"
+    | "supplySmartCollateral"
+    | "withdrawSmartDexLp"
+    | "withdrawSmartCollateral"
+    | "withdrawSmartCollateralFixed"
+    | "repaySmartMarket"
+    | "brokerBorrow"
+    | "brokerRepay";
   params: {
     to: Address;
     abi: Abi;
     functionName: string;
-    args: unknown[];
+    args: readonly unknown[];
     value?: bigint;
+    chainId: ChainId;
+    data: `0x${string}`;
+  };
+  meta?: {
+    token?: Address;
+    spender?: Address;
+    amount?: bigint;
+    reset?: boolean;
   };
 }
 ```
