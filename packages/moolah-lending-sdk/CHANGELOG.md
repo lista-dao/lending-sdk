@@ -1,5 +1,13 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.1
+
+### Patch Changes
+
+- Update readme files
+- Updated dependencies
+  - @lista-dao/moolah-sdk-core@1.0.1
+
 ## 1.0.0
 
 ### Major Changes

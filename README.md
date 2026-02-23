@@ -329,14 +329,14 @@ console.log(`Remaining: ${remaining.toFormat(2)}`);
 
 ### Simulate Functions (Decimal-based)
 
-| Function                           | Description                        |
-| ---------------------------------- | ---------------------------------- |
-| `simulateMarketBorrow(params)`     | Simulate market borrow operation   |
-| `simulateMarketRepay(params)`      | Simulate market repay operation    |
-| `simulateVaultDeposit(params)`     | Simulate vault deposit operation   |
-| `simulateVaultWithdraw(params)`    | Simulate vault withdraw operation  |
-| `simulateSmartMarketBorrow(params)`| Simulate smart market borrow       |
-| `simulateSmartMarketRepay(params)` | Simulate smart market repay        |
+| Function                            | Description                       |
+| ----------------------------------- | --------------------------------- |
+| `simulateMarketBorrow(params)`      | Simulate market borrow operation  |
+| `simulateMarketRepay(params)`       | Simulate market repay operation   |
+| `simulateVaultDeposit(params)`      | Simulate vault deposit operation  |
+| `simulateVaultWithdraw(params)`     | Simulate vault withdraw operation |
+| `simulateSmartMarketBorrow(params)` | Simulate smart market borrow      |
+| `simulateSmartMarketRepay(params)`  | Simulate smart market repay       |
 
 ### Interest Rate Functions
 
@@ -356,13 +356,6 @@ pnpm build        # Build all packages
 pnpm test         # Run tests
 pnpm lint         # Lint code
 pnpm check:types  # Type check
-```
-
-## Publishing
-
-```bash
-pnpm changeset    # Create changeset
-pnpm release      # Version bump + publish
 ```
 
 ## License

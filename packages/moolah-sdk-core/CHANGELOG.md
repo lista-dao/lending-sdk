@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.1
+
+### Patch Changes
+
+- Update readme files
+
 ## 1.0.0
 
 ### Major Changes

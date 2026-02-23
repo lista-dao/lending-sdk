@@ -33,15 +33,15 @@ const amount = Decimal.parse("123.456", 18);
 amount.add(10).mul(2).div(3);
 
 // Rounding
-amount.dp(2, RoundingMode.ROUND);  // 123.46
+amount.dp(2, RoundingMode.ROUND); // 123.46
 
 // Format
-amount.toString(2);   // "123.46" (trims zeros)
-amount.toFixed(4);    // "123.4560"
-amount.toFormat(2);   // "123.46" (with commas for large numbers)
+amount.toString(2); // "123.46" (trims zeros)
+amount.toFixed(4); // "123.4560"
+amount.toFormat(2); // "123.46" (with commas for large numbers)
 
 // Comparison
-amount.gt(100);   // true
+amount.gt(100); // true
 amount.eq(123.456); // true
 ```
 
@@ -60,8 +60,8 @@ import {
 
 // Calculate current LTV
 const ltv = computeLTV({
-  collateral: 1000000000000000000n,  // 1 ETH collateral
-  borrowed: 500000000n,               // 500 USDC borrowed
+  collateral: 1000000000000000000n, // 1 ETH collateral
+  borrowed: 500000000n, // 500 USDC borrowed
   priceRate: 2000000000000000000000n, // ETH = 2000 USDC
 });
 
@@ -70,9 +70,9 @@ const result = simulateBorrow({
   collateral: 1000000000000000000n,
   borrowed: 0n,
   priceRate: 2000000000000000000000n,
-  lltv: 800000000000000000n,           // 80% LLTV
-  supplyAmount: 500000000000000000n,   // Adding 0.5 ETH
-  borrowAmount: 500000000n,             // Borrowing 500 USDC
+  lltv: 800000000000000000n, // 80% LLTV
+  supplyAmount: 500000000000000000n, // Adding 0.5 ETH
+  borrowAmount: 500000000n, // Borrowing 500 USDC
 });
 // result: { newLTV, newLiqPrice, newLoanable, newWithdrawable, ... }
 ```
@@ -107,24 +107,32 @@ const curve = getInterestRates({
 });
 ```
 
-### Vault Calculations
+### Vault Simulation
 
 ```typescript
 import {
   simulateVaultDeposit,
   simulateVaultWithdraw,
-  getVaultSharePrice,
-  convertToShares,
-  convertToAssets,
+  Decimal,
 } from "@lista-dao/moolah-sdk-core";
 
-// Simulate vault deposit
-const result = simulateVaultDeposit({
-  totalAssets,
-  totalSupply,
-  assets: depositAmount,
+// Simulate vault deposit (user balance → locked in vault)
+const depositResult = simulateVaultDeposit({
+  depositAmount: Decimal.parse("100", 18),
+  userLocked: Decimal.parse("500", 18),
+  userBalance: Decimal.parse("1000", 18),
+  apy: Decimal.parse("0.05", 18), // optional, for earnings projection
+  assetPrice: Decimal.parse("1", 18), // optional
 });
-// result: { shares, newTotalAssets, newTotalSupply }
+// depositResult: { locked, balance, yearlyEarnings?, monthlyEarnings? }
+
+// Simulate vault withdraw
+const withdrawResult = simulateVaultWithdraw({
+  withdrawAmount: Decimal.parse("100", 18),
+  userLocked: Decimal.parse("500", 18),
+  userBalance: Decimal.parse("200", 18),
+});
+// withdrawResult: { locked, balance, yearlyEarnings?, monthlyEarnings? }
 ```
 
 ### Loan Calculations
@@ -149,7 +157,7 @@ const repayment = calculateFixedLoanRepayment({
 ```typescript
 import type {
   // Network
-  NetworkName,  // 'bsc' | 'ethereum' | 'sepolia'
+  NetworkName, // 'bsc' | 'ethereum'
 
   // Tokens
   TokenInfo,
@@ -168,8 +176,9 @@ import type {
   WriteSmartMarketConfig,
 
   // Broker
-  BrokerUserPosition,
-  BrokerFixedTerm,
+  BrokerUserPositionsData,
+  FixedTermAndRate,
+  BrokerInfo,
 
   // Operations
   BuiltSupplyOperation,
@@ -183,14 +192,10 @@ import type {
 
 ```typescript
 import {
-  // ABIs
-  moolahAbi,
-  moolahVaultAbi,
-  interestRateModelAbi,
-  erc20Abi,
-  erc4626Abi,
-
-  // Address helpers
+  MOOLAH_ABI,
+  MOOLAH_VAULT_ABI,
+  INTEREST_RATE_MODEL_ABI,
+  ERC20_ABI,
   getContractAddress,
   getContractAddressOptional,
 } from "@lista-dao/moolah-sdk-core";
@@ -209,11 +214,11 @@ import {
   isUsdtLikeToken,
 } from "@lista-dao/moolah-sdk-core";
 
-// Get API chain identifier
-const apiChain = getApiChain("bsc");  // "BSC"
+// Get API chain identifier (for list APIs)
+const apiChain = getApiChain("bsc"); // "bsc"
 
 // Get API URL
-const url = getListaApiUrl("prod");  // "https://api.lista.org"
+const url = getListaApiUrl("prod"); // "https://api.lista.org"
 ```
 
 ## Package Architecture
@@ -227,22 +232,28 @@ This is a **zero-dependency core package** (except for Morpho SDK for interest c
 ```
 moolah-sdk-core/
 ├── calculations/
-│   ├── position.ts    # LTV, loanable, withdrawable
+│   ├── position.ts     # LTV, loanable, withdrawable (bigint)
 │   ├── interestRate.ts # Borrow rates, APY
-│   ├── vault.ts       # Vault share calculations
-│   └── loan.ts        # Loan repayment calculations
+│   ├── stablepool.ts   # Stable swap / LP math
+│   └── loan.ts         # Loan repayment calculations
+├── simulate/
+│   ├── market.ts       # simulateMarketBorrow, simulateMarketRepay
+│   ├── vault.ts        # simulateVaultDeposit, simulateVaultWithdraw
+│   └── smart.ts        # Smart market simulate + LP breakdown
 ├── contracts/
-│   ├── abi/           # Contract ABIs
-│   └── config.ts      # Contract addresses
+│   ├── abis/           # Contract ABIs
+│   └── config.ts       # Contract addresses
 ├── types/
-│   ├── market.ts      # Market types
-│   ├── vault.ts       # Vault types
-│   ├── loan.ts        # Loan types
-│   └── operations.ts  # Operation result types
+│   ├── market.ts       # Market types
+│   ├── vault.ts        # Vault types
+│   ├── smart.ts        # Smart market types
+│   ├── broker.ts       # Broker types
+│   └── operations.ts   # Operation result types
 └── utils/
-    ├── decimal.ts     # Decimal class
+    ├── decimal.ts      # Decimal class
     ├── fraction.ts    # Fraction class
-    └── network.ts     # Network helpers
+    ├── apiChain.ts     # getApiChain, getListaApiUrl
+    └── network.ts      # getNativeCurrencySymbol
 ```
 
 ## License
