@@ -1,6 +1,6 @@
 {
   "name": "@lista-dao/moolah-sdk-core",
-  "version": "0.1.2",
+  "version": "1.0.0",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -18,11 +18,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc",
-    "lint": "eslint --ext .ts . --fix",
-    "check:types": "tsc --noEmit",
-    "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "build": "pnpm exec tsc",
+    "lint": "pnpm exec eslint \"src/**/*.ts\" --fix",
+    "check:types": "pnpm exec tsc --noEmit",
+    "test": "pnpm exec vitest run",
+    "test:coverage": "pnpm exec vitest run --coverage",
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
