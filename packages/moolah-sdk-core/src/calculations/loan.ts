@@ -58,10 +58,8 @@ export function calculateDynamicLoanRepayment(
         loanDecimals,
     );
 
-    const rawRate = MathLib.wTaylorCompounded(
-        BigInt(new Decimal(position.rate).toString()),
-        ONE_YEAR_SECONDS,
-    );
+    // position.rate is already a per-second rate in 18 decimals
+    const rawRate = MathLib.wTaylorCompounded(position.rate, ONE_YEAR_SECONDS);
     const rateDecimal = new Decimal(rawRate, 18);
 
     // Total outstanding = normalized debt × (1 + rate)
@@ -69,7 +67,7 @@ export function calculateDynamicLoanRepayment(
 
     const principal = normalizedDebt;
     const tenMinutesRawRate = MathLib.wTaylorCompounded(
-        BigInt(new Decimal(position.rate).toString()),
+        position.rate,
         TEN_MINUTES_SECONDS,
     );
     const tenMinutesRateDecimal = new Decimal(tenMinutesRawRate, 18);

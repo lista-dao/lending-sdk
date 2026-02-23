@@ -3,6 +3,36 @@ import type { Decimal } from '../utils/decimal';
 import type { TokenInfo } from './common';
 
 /**
+ * Configuration for write operations (supply, borrow, repay, withdraw).
+ * Obtained via readSDK.getWriteConfig() or converted from MarketExtraInfo.
+ */
+export interface WriteMarketConfig {
+    params: MarketParams;
+    collateralIsNative: boolean;
+    loanIsNative: boolean;
+    collateralProvider: Address;
+    loanProvider: Address;
+    collateralInfo: TokenInfo;
+    loanInfo: TokenInfo;
+}
+
+/**
+ * Convert MarketExtraInfo to WriteMarketConfig.
+ * Use when you have extraInfo from another source (e.g. atoms, cache).
+ */
+export function toWriteConfig(extraInfo: MarketExtraInfo): WriteMarketConfig {
+    return {
+        params: extraInfo.params,
+        collateralIsNative: extraInfo.collateralIsNative,
+        loanIsNative: extraInfo.loanIsNative,
+        collateralProvider: extraInfo.collateralProvider,
+        loanProvider: extraInfo.loanProvider,
+        collateralInfo: extraInfo.collateralInfo,
+        loanInfo: extraInfo.loanInfo,
+    };
+}
+
+/**
  * Market parameters from chain
  */
 export interface MarketParams {
@@ -98,7 +128,7 @@ export interface MarketExtraInfo {
     utilRate: Decimal;
     borrowRate: Decimal;
     priceRate: Decimal;
-    rateCap: bigint;
+    rateCap: bigint | null;
     rateFloor: bigint | null;
     rateAtTarget: bigint;
     rateView: bigint;
@@ -113,9 +143,9 @@ export interface MarketExtraInfo {
 }
 
 /**
- * Smart Market extra information from chain
+ * Smart Lending market information from chain
  */
-export interface MarketExtraInfoOfSmart {
+export interface SmartMarketInfo {
     LLTV: Decimal;
     lastUpdate: bigint;
     params: MarketParams;
@@ -210,9 +240,9 @@ export interface MarketUserData {
 }
 
 /**
- * Smart Market user data
+ * Smart Lending market user data
  */
-export interface MarketUserDataOfSmart {
+export interface SmartMarketUserData {
     collateral: Decimal;
     lpTokenA: Decimal;
     lpTokenB: Decimal;
