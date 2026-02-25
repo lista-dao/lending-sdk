@@ -14,28 +14,28 @@ export const MARKET_THRESHOLD = new Decimal(98n, 2);
  * Market state needed for simulation
  */
 export interface SimulateMarketState {
-  /** Total supply in the market */
-  totalSupply: Decimal;
-  /** Total borrow in the market */
-  totalBorrow: Decimal;
-  /** Liquidation LTV threshold */
-  LLTV: Decimal;
-  /** Price rate (collateral/loan price ratio) */
-  priceRate: Decimal;
-  /** Loan token decimals */
-  loanDecimals: number;
-  /** Collateral token decimals */
-  collateralDecimals: number;
+    /** Total supply in the market */
+    totalSupply: Decimal;
+    /** Total borrow in the market */
+    totalBorrow: Decimal;
+    /** Liquidation LTV threshold */
+    LLTV: Decimal;
+    /** Price rate (collateral/loan price ratio) */
+    priceRate: Decimal;
+    /** Loan token decimals */
+    loanDecimals: number;
+    /** Collateral token decimals */
+    collateralDecimals: number;
 }
 
 /**
  * User's current market position
  */
 export interface SimulateUserPosition {
-  /** Current collateral amount */
-  collateral: Decimal;
-  /** Current borrowed amount */
-  borrowed: Decimal;
+    /** Current collateral amount */
+    collateral: Decimal;
+    /** Current borrowed amount */
+    borrowed: Decimal;
 }
 
 /**
@@ -49,12 +49,12 @@ export interface SimulateUserPosition {
  * @returns LTV ratio as Decimal
  */
 export function simulateComputeLTV(
-  borrowed: Decimal,
-  collateral: Decimal,
-  priceRate: Decimal,
+    borrowed: Decimal,
+    collateral: Decimal,
+    priceRate: Decimal,
 ): Decimal {
-  const denominator = collateral.mul(priceRate);
-  return denominator.gt(0n) ? borrowed.div(denominator) : Decimal.ZERO;
+    const denominator = collateral.mul(priceRate);
+    return denominator.gt(0n) ? borrowed.div(denominator) : Decimal.ZERO;
 }
 
 /**
@@ -71,19 +71,19 @@ export function simulateComputeLTV(
  * @returns Maximum additional amount that can be borrowed
  */
 export function simulateComputeLoanable(
-  collateral: Decimal,
-  borrowed: Decimal,
-  LLTV: Decimal,
-  priceRate: Decimal,
-  loanDecimals: number,
-  threshold: Decimal = MARKET_THRESHOLD,
+    collateral: Decimal,
+    borrowed: Decimal,
+    LLTV: Decimal,
+    priceRate: Decimal,
+    loanDecimals: number,
+    threshold: Decimal = MARKET_THRESHOLD,
 ): Decimal {
-  return collateral
-    .mul(LLTV)
-    .mul(threshold)
-    .mul(priceRate)
-    .sub(borrowed)
-    .roundDown(loanDecimals);
+    return collateral
+        .mul(LLTV)
+        .mul(threshold)
+        .mul(priceRate)
+        .sub(borrowed)
+        .roundDown(loanDecimals);
 }
 
 /**
@@ -101,17 +101,17 @@ export function simulateComputeLoanable(
  * @returns Maximum collateral that can be withdrawn
  */
 export function simulateComputeWithdrawable(
-  collateral: Decimal,
-  borrowed: Decimal,
-  repay: Decimal,
-  LLTV: Decimal,
-  priceRate: Decimal,
-  collateralDecimals: number,
-  threshold: Decimal = MARKET_THRESHOLD,
+    collateral: Decimal,
+    borrowed: Decimal,
+    repay: Decimal,
+    LLTV: Decimal,
+    priceRate: Decimal,
+    collateralDecimals: number,
+    threshold: Decimal = MARKET_THRESHOLD,
 ): Decimal {
-  return collateral
-    .sub(borrowed.sub(repay).div(priceRate).div(LLTV).div(threshold))
-    .roundDown(collateralDecimals);
+    return collateral
+        .sub(borrowed.sub(repay).div(priceRate).div(LLTV).div(threshold))
+        .roundDown(collateralDecimals);
 }
 
 /**
@@ -125,48 +125,52 @@ export function simulateComputeWithdrawable(
  * @returns Liquidation price rate (price at which position gets liquidated)
  */
 export function simulateComputeLiqPriceRate(
-  borrowed: Decimal,
-  collateral: Decimal,
-  LLTV: Decimal,
+    borrowed: Decimal,
+    collateral: Decimal,
+    LLTV: Decimal,
 ): Decimal {
-  if (collateral.lte(Decimal.ZERO)) {
-    return Decimal.ZERO;
-  }
-  return borrowed.div(collateral).div(LLTV).roundDown(18);
+    if (collateral.lte(Decimal.ZERO)) {
+        return Decimal.ZERO;
+    }
+    return borrowed.div(collateral).div(LLTV).roundDown(18);
 }
 
 /**
  * Parameters for market borrow simulation
  */
 export interface SimulateMarketBorrowParams {
-  /** Amount of collateral to supply */
-  supplyAmount: Decimal;
-  /** Amount to borrow */
-  borrowAmount: Decimal;
-  /** Current user position */
-  userPosition: SimulateUserPosition;
-  /** Market state */
-  marketState: SimulateMarketState;
-  /** Function to compute borrow rate from utilization rate */
-  computeBorrowRate?: (utilRate: Decimal) => Decimal;
+    /** Amount of collateral to supply */
+    supplyAmount: Decimal;
+    /** Amount to borrow */
+    borrowAmount: Decimal;
+    /** Current user position */
+    userPosition: SimulateUserPosition;
+    /** Market state */
+    marketState: SimulateMarketState;
+    /** Function to compute borrow rate from utilization rate */
+    computeBorrowRate?: (utilRate: Decimal) => Decimal;
 }
 
 /**
  * Result of market borrow simulation
  */
 export interface MarketBorrowSimulationResult {
-  /** New collateral amount after supply */
-  collateral: Decimal;
-  /** New borrowed amount after borrow */
-  borrowed: Decimal;
-  /** New LTV ratio */
-  LTV: Decimal;
-  /** Maximum additional amount that can be borrowed */
-  loanable: Decimal;
-  /** Liquidation price rate */
-  liqPriceRate: Decimal;
-  /** New borrow rate (if computeBorrowRate provided) */
-  borrowRate?: Decimal;
+    /** New collateral amount after supply */
+    collateral: Decimal;
+    /** New borrowed amount after borrow */
+    borrowed: Decimal;
+    /** New LTV ratio */
+    LTV: Decimal;
+    /** Maximum additional loanable after borrow (affected by borrowAmount) */
+    loanable: Decimal;
+    /** Maximum loanable from base position + supply (not affected by borrowAmount) */
+    baseLoanable: Decimal;
+    /** Compute loanable for a target LTV ratio . targetLTV is absolute e.g. 0.4 */
+    computeLoanableForLTV: (targetLTV: number) => Decimal;
+    /** Liquidation price rate */
+    liqPriceRate: Decimal;
+    /** New borrow rate (if computeBorrowRate provided) */
+    borrowRate?: Decimal;
 }
 
 /**
@@ -198,92 +202,113 @@ export interface MarketBorrowSimulationResult {
  * ```
  */
 export function simulateMarketBorrow(
-  params: SimulateMarketBorrowParams,
+    params: SimulateMarketBorrowParams,
 ): MarketBorrowSimulationResult {
-  const {
-    supplyAmount,
-    borrowAmount,
-    userPosition,
-    marketState,
-    computeBorrowRate,
-  } = params;
-  const { collateral: currentCollateral, borrowed: currentBorrowed } =
-    userPosition;
-  const { totalSupply, totalBorrow, LLTV, priceRate, loanDecimals } =
-    marketState;
+    const {
+        supplyAmount,
+        borrowAmount,
+        userPosition,
+        marketState,
+        computeBorrowRate,
+    } = params;
+    const { collateral: currentCollateral, borrowed: currentBorrowed } =
+        userPosition;
+    const { totalSupply, totalBorrow, LLTV, priceRate, loanDecimals } =
+        marketState;
 
-  // Calculate new position
-  const collateral = currentCollateral.add(supplyAmount);
-  const borrowed = currentBorrowed.add(borrowAmount);
+    // Calculate new position
+    const collateral = currentCollateral.add(supplyAmount);
+    const borrowed = currentBorrowed.add(borrowAmount);
 
-  // Calculate LTV
-  const LTV = simulateComputeLTV(borrowed, collateral, priceRate);
+    // Calculate LTV
+    const LTV = simulateComputeLTV(borrowed, collateral, priceRate);
 
-  // Calculate loanable
-  const loanable = simulateComputeLoanable(
-    collateral,
-    borrowed,
-    LLTV,
-    priceRate,
-    loanDecimals,
-  );
+    // Calculate loanable (post-borrow remaining)
+    const loanable = simulateComputeLoanable(
+        collateral,
+        borrowed,
+        LLTV,
+        priceRate,
+        loanDecimals,
+    );
 
-  // Calculate liquidation price rate
-  const liqPriceRate = simulateComputeLiqPriceRate(borrowed, collateral, LLTV);
+    // Calculate base loanable (from original borrowed, not affected by borrowAmount)
+    const baseLoanable = simulateComputeLoanable(
+        collateral,
+        currentBorrowed,
+        LLTV,
+        priceRate,
+        loanDecimals,
+    );
 
-  const result: MarketBorrowSimulationResult = {
-    collateral,
-    borrowed,
-    LTV,
-    loanable,
-    liqPriceRate,
-  };
+    // Closure: compute loanable for a specific target LTV
+    const computeLoanableForLTV = (targetLTV: number): Decimal => {
+        const ltv = Decimal.parse(targetLTV.toString());
+        return collateral
+            .mul(ltv)
+            .mul(priceRate)
+            .sub(currentBorrowed)
+            .roundDown(loanDecimals);
+    };
 
-  // Calculate new borrow rate if function provided
-  if (computeBorrowRate) {
-    const newUtilRate = totalSupply.gt(0n)
-      ? totalBorrow.add(borrowAmount).div(totalSupply)
-      : Decimal.ZERO;
-    result.borrowRate = computeBorrowRate(newUtilRate);
-  }
+    // Calculate liquidation price rate
+    const liqPriceRate = simulateComputeLiqPriceRate(borrowed, collateral, LLTV);
 
-  return result;
+    const result: MarketBorrowSimulationResult = {
+        collateral,
+        borrowed,
+        LTV,
+        loanable,
+        baseLoanable,
+        computeLoanableForLTV,
+        liqPriceRate,
+    };
+
+    // Calculate new borrow rate if function provided
+    if (computeBorrowRate) {
+        const newUtilRate = totalSupply.gt(0n)
+            ? totalBorrow.add(borrowAmount).div(totalSupply)
+            : Decimal.ZERO;
+        result.borrowRate = computeBorrowRate(newUtilRate);
+    }
+
+    return result;
 }
 
 /**
  * Parameters for market repay simulation
  */
 export interface SimulateMarketRepayParams {
-  /** Amount to repay */
-  repayAmount: Decimal;
-  /** Amount of collateral to withdraw */
-  withdrawAmount: Decimal;
-  /** Whether repaying all borrowed amount */
-  isRepayAll?: boolean;
-  /** Current user position */
-  userPosition: SimulateUserPosition;
-  /** Market state */
-  marketState: SimulateMarketState;
-  /** Function to compute borrow rate from utilization rate */
-  computeBorrowRate?: (utilRate: Decimal) => Decimal;
+    /** Amount to repay */
+    repayAmount: Decimal;
+    /** Amount of collateral to withdraw */
+    withdrawAmount: Decimal;
+    /** Whether repaying all borrowed amount */
+    isRepayAll?: boolean;
+    /** Current user position */
+    userPosition: SimulateUserPosition;
+    /** Market state */
+    marketState: SimulateMarketState;
+    /** Function to compute borrow rate from utilization rate */
+    computeBorrowRate?: (utilRate: Decimal) => Decimal;
 }
 
 /**
  * Result of market repay simulation
  */
 export interface MarketRepaySimulationResult {
-  /** New collateral amount after withdraw */
-  collateral: Decimal;
-  /** New borrowed amount after repay */
-  borrowed: Decimal;
-  /** New LTV ratio */
-  LTV: Decimal;
-  /** Maximum collateral that can be withdrawn */
-  withdrawable: Decimal;
-  /** Liquidation price rate */
-  liqPriceRate: Decimal;
-  /** New borrow rate (if computeBorrowRate provided) */
-  borrowRate?: Decimal;
+    /** New collateral amount after withdraw */
+    collateral: Decimal;
+    /** New borrowed amount after repay */
+    borrowed: Decimal;
+    /** New LTV ratio */
+    LTV: Decimal;
+    /** Maximum collateral that can be withdrawn */
+    withdrawable: Decimal;
+    /** Liquidation price rate */
+    liqPriceRate: Decimal;
+    /** New borrow rate (if computeBorrowRate provided) */
+    borrowRate?: Decimal;
 }
 
 /**
@@ -315,60 +340,60 @@ export interface MarketRepaySimulationResult {
  * ```
  */
 export function simulateMarketRepay(
-  params: SimulateMarketRepayParams,
+    params: SimulateMarketRepayParams,
 ): MarketRepaySimulationResult {
-  const {
-    repayAmount,
-    withdrawAmount,
-    isRepayAll = false,
-    userPosition,
-    marketState,
-    computeBorrowRate,
-  } = params;
-  const { collateral: currentCollateral, borrowed: currentBorrowed } =
-    userPosition;
-  const { totalSupply, totalBorrow, LLTV, priceRate, collateralDecimals } =
-    marketState;
-
-  // Calculate new position
-  const collateral = currentCollateral
-    .sub(withdrawAmount)
-    .roundDown(collateralDecimals);
-  const borrowed = isRepayAll ? Decimal.ZERO : currentBorrowed.sub(repayAmount);
-
-  // Calculate LTV
-  const LTV = simulateComputeLTV(borrowed, collateral, priceRate);
-
-  // Calculate withdrawable
-  const withdrawable = isRepayAll
-    ? currentCollateral
-    : simulateComputeWithdrawable(
-        currentCollateral,
-        currentBorrowed,
+    const {
         repayAmount,
-        LLTV,
-        priceRate,
-        collateralDecimals,
-      );
+        withdrawAmount,
+        isRepayAll = false,
+        userPosition,
+        marketState,
+        computeBorrowRate,
+    } = params;
+    const { collateral: currentCollateral, borrowed: currentBorrowed } =
+        userPosition;
+    const { totalSupply, totalBorrow, LLTV, priceRate, collateralDecimals } =
+        marketState;
 
-  // Calculate liquidation price rate
-  const liqPriceRate = simulateComputeLiqPriceRate(borrowed, collateral, LLTV);
+    // Calculate new position
+    const collateral = currentCollateral
+        .sub(withdrawAmount)
+        .roundDown(collateralDecimals);
+    const borrowed = isRepayAll ? Decimal.ZERO : currentBorrowed.sub(repayAmount);
 
-  const result: MarketRepaySimulationResult = {
-    collateral,
-    borrowed,
-    LTV,
-    withdrawable,
-    liqPriceRate,
-  };
+    // Calculate LTV
+    const LTV = simulateComputeLTV(borrowed, collateral, priceRate);
 
-  // Calculate new borrow rate if function provided
-  if (computeBorrowRate) {
-    const newUtilRate = totalSupply.gt(0n)
-      ? totalBorrow.sub(repayAmount).div(totalSupply)
-      : Decimal.ZERO;
-    result.borrowRate = computeBorrowRate(newUtilRate);
-  }
+    // Calculate withdrawable
+    const withdrawable = isRepayAll
+        ? currentCollateral
+        : simulateComputeWithdrawable(
+            currentCollateral,
+            currentBorrowed,
+            repayAmount,
+            LLTV,
+            priceRate,
+            collateralDecimals,
+        );
 
-  return result;
+    // Calculate liquidation price rate
+    const liqPriceRate = simulateComputeLiqPriceRate(borrowed, collateral, LLTV);
+
+    const result: MarketRepaySimulationResult = {
+        collateral,
+        borrowed,
+        LTV,
+        withdrawable,
+        liqPriceRate,
+    };
+
+    // Calculate new borrow rate if function provided
+    if (computeBorrowRate) {
+        const newUtilRate = totalSupply.gt(0n)
+            ? totalBorrow.sub(repayAmount).div(totalSupply)
+            : Decimal.ZERO;
+        result.borrowRate = computeBorrowRate(newUtilRate);
+    }
+
+    return result;
 }

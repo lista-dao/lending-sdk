@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.2
+
+### Patch Changes
+
+- Add baseLoanable and computeLoanableForLTV to market borrow simulations
+
 ## 1.0.1
 
 ### Patch Changes
