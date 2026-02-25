@@ -204,6 +204,49 @@ describe('Market Simulation', () => {
             expect(result.liqPriceRate.gt(Decimal.ZERO)).toBe(true);
         });
 
+        it('should return baseLoanable not affected by borrowAmount', () => {
+            const base = simulateMarketBorrow({
+                supplyAmount: Decimal.parse('1', 18),
+                borrowAmount: Decimal.ZERO,
+                userPosition: {
+                    collateral: Decimal.parse('1', 18),
+                    borrowed: Decimal.ZERO,
+                },
+                marketState,
+            });
+            const withBorrow = simulateMarketBorrow({
+                supplyAmount: Decimal.parse('1', 18),
+                borrowAmount: Decimal.parse('500', 18),
+                userPosition: {
+                    collateral: Decimal.parse('1', 18),
+                    borrowed: Decimal.ZERO,
+                },
+                marketState,
+            });
+
+            // baseLoanable should be identical regardless of borrowAmount
+            expect(base.baseLoanable.toString(18)).toBe(withBorrow.baseLoanable.toString(18));
+            // loanable should differ (post-borrow remaining)
+            expect(base.loanable.gt(withBorrow.loanable)).toBe(true);
+        });
+
+        it('should compute loanable for a target LTV via computeLoanableForLTV', () => {
+            const result = simulateMarketBorrow({
+                supplyAmount: Decimal.parse('1', 18),
+                borrowAmount: Decimal.ZERO,
+                userPosition: {
+                    collateral: Decimal.parse('1', 18),
+                    borrowed: Decimal.ZERO,
+                },
+                marketState,
+            });
+
+            // collateral=2, priceRate=2000, targetLTV=0.4
+            // loanable = 2 * 0.4 * 2000 - 0 = 1600
+            const loanable = result.computeLoanableForLTV(0.4);
+            expect(Number(loanable.toString(18))).toBeCloseTo(1600, 0);
+        });
+
         it('should calculate borrow rate when computeBorrowRate provided', () => {
             const result = simulateMarketBorrow({
                 supplyAmount: Decimal.ZERO,
@@ -437,9 +480,59 @@ describe('Smart Market Simulation', () => {
             });
 
             // Collateral should increase by LP amount
+            expect(result.collateral.toString(18)).toBe('200');
             expect(result.borrowed.toString(18)).toBe('50');
             expect(result.LTV.gt(Decimal.ZERO)).toBe(true);
             expect(result.loanable.gte(Decimal.ZERO)).toBe(true);
+        });
+
+        it('should return baseLoanable not affected by borrowAmount', () => {
+            const userPosition = {
+                collateral: Decimal.parse('100', 18),
+                borrowed: Decimal.ZERO,
+                lpTokenA: Decimal.parse('50', 18),
+                lpTokenB: Decimal.parse('50', 18),
+            };
+            const base = simulateSmartMarketBorrow({
+                supplyLpAmount: Decimal.parse('100', 18),
+                tokenAAmount: Decimal.ZERO,
+                tokenBAmount: Decimal.ZERO,
+                borrowAmount: Decimal.ZERO,
+                userPosition,
+                marketState: smartMarketState,
+            });
+            const withBorrow = simulateSmartMarketBorrow({
+                supplyLpAmount: Decimal.parse('100', 18),
+                tokenAAmount: Decimal.ZERO,
+                tokenBAmount: Decimal.ZERO,
+                borrowAmount: Decimal.parse('50', 18),
+                userPosition,
+                marketState: smartMarketState,
+            });
+
+            expect(base.baseLoanable.toString(18)).toBe(withBorrow.baseLoanable.toString(18));
+            expect(base.loanable.gt(withBorrow.loanable)).toBe(true);
+        });
+
+        it('should compute loanable for a target LTV via computeLoanableForLTV', () => {
+            const result = simulateSmartMarketBorrow({
+                supplyLpAmount: Decimal.parse('100', 18),
+                tokenAAmount: Decimal.ZERO,
+                tokenBAmount: Decimal.ZERO,
+                borrowAmount: Decimal.ZERO,
+                userPosition: {
+                    collateral: Decimal.parse('100', 18),
+                    borrowed: Decimal.ZERO,
+                    lpTokenA: Decimal.parse('50', 18),
+                    lpTokenB: Decimal.parse('50', 18),
+                },
+                marketState: smartMarketState,
+            });
+
+            // collateral=200, priceRate=1, targetLTV=0.4
+            // loanable = 200 * 0.4 * 1 - 0 = 80
+            const loanable = result.computeLoanableForLTV(0.4);
+            expect(Number(loanable.toString(18))).toBeCloseTo(80, 0);
         });
 
         it('should calculate borrow rate when provided', () => {
