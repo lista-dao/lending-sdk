@@ -15,10 +15,13 @@
     "clean": "pnpm -r exec rimraf dist node_modules",
     "watch:core": "pnpm --filter '@lista-dao/moolah-sdk-core' run build --watch",
     "version": "changeset version",
-    "release": "changeset version && pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --access public --no-git-checks"
+    "release": "changeset version && pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --access public --no-git-checks",
+    "format": "prettier --write \"packages/*/src/**/*.ts\"",
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\""
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
+    "prettier": "^3.2.5",
     "rimraf": "^5.0.5",
     "typescript": "^5.2.2"
   },

@@ -1,4 +1,4 @@
-import type { Address } from 'viem';
+import type { Address } from "viem";
 
 export type { Address };
 
@@ -6,23 +6,22 @@ export type { Address };
  * Network names supported by Moolah SDK
  */
 export enum NetworkNames {
-    bsc = 'bsc',
-    ethereum = 'ethereum',
-    // bscTestnet = 'bscTestnet',
-    // sepolia = 'sepolia',
+  bsc = "bsc",
+  ethereum = "ethereum",
+  // bscTestnet = 'bscTestnet',
+  // sepolia = 'sepolia',
 }
 
 /**
  * Token information structure
  */
 export interface TokenInfo {
-    address: Address;
-    symbol: string;
-    decimals: number;
-    /** Token name (optional, not always needed) */
-    name?: string;
+  address: Address;
+  symbol: string;
+  decimals: number;
+  /** Token name (optional, not always needed) */
+  name?: string;
 }
-
 
 /**
  * Default rate cap for interest rate model (per-second rate)

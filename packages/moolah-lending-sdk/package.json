@@ -26,7 +26,7 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
-    "@lista-dao/moolah-sdk-core": "workspace:*",
+    "@lista-dao/moolah-sdk-core": "workspace:^",
     "@morpho-org/blue-sdk": "^1.1.1",
     "viem": "^2.22.10"
   },
