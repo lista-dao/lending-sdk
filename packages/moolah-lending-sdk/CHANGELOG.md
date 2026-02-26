@@ -1,5 +1,13 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.2
+
+### Patch Changes
+
+- Add Prettier configuration and update package.json scripts for formatting
+- Updated dependencies
+  - @lista-dao/moolah-sdk-core@1.0.3
+
 ## 1.0.1
 
 ### Patch Changes

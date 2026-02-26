@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.3
+
+### Patch Changes
+
+- Add Prettier configuration and update package.json scripts for formatting
+
 ## 1.0.2
 
 ### Patch Changes

@@ -24,7 +24,7 @@ importers:
   packages/moolah-lending-sdk:
     dependencies:
       '@lista-dao/moolah-sdk-core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../moolah-sdk-core
       '@morpho-org/blue-sdk':
         specifier: ^1.1.1
