@@ -1,12 +1,12 @@
-import { Decimal } from '../utils/decimal';
-import { MathLib } from '@morpho-org/blue-sdk';
+import { Decimal } from "../utils/decimal";
+import { MathLib } from "@morpho-org/blue-sdk";
 
 import type {
-    DynamicLoanPosition,
-    DynamicLoanRepaymentResult,
-    FixedLoanPosition,
-    FixedLoanRepaymentResult,
-} from '../types/loan';
+  DynamicLoanPosition,
+  DynamicLoanRepaymentResult,
+  FixedLoanPosition,
+  FixedLoanRepaymentResult,
+} from "../types/loan";
 
 /**
  * Constants for loan calculations
@@ -22,7 +22,7 @@ const RATE_SCALE_27 = 10n ** 27n;
  * @returns The rate minus 1 (e.g., 0.05e27 for 5% APR)
  */
 export function normalizeAprRate(apr: bigint): bigint {
-    return apr > RATE_SCALE_27 ? apr - RATE_SCALE_27 : 0n;
+  return apr > RATE_SCALE_27 ? apr - RATE_SCALE_27 : 0n;
 }
 
 /**
@@ -32,12 +32,12 @@ export function normalizeAprRate(apr: bigint): bigint {
  * @returns Current timestamp rounded down to nearest 10-minute block plus buffer
  */
 export function getCurrentRoundedTimestamp(bufferMinutes = 10): bigint {
-    const currentSeconds = BigInt(Math.round(Date.now() / 1000));
-    const roundedDown =
-        (currentSeconds / BigInt(TEN_MINUTES_SECONDS)) *
-        BigInt(TEN_MINUTES_SECONDS);
-    const bufferSeconds = BigInt(bufferMinutes * 60);
-    return roundedDown + bufferSeconds;
+  const currentSeconds = BigInt(Math.round(Date.now() / 1000));
+  const roundedDown =
+    (currentSeconds / BigInt(TEN_MINUTES_SECONDS)) *
+    BigInt(TEN_MINUTES_SECONDS);
+  const bufferSeconds = BigInt(bufferMinutes * 60);
+  return roundedDown + bufferSeconds;
 }
 
 /**
@@ -50,41 +50,41 @@ export function getCurrentRoundedTimestamp(bufferMinutes = 10): bigint {
  * @returns Object containing total repay amount and breakdown of principal and interest
  */
 export function calculateDynamicLoanRepayment(
-    position: DynamicLoanPosition,
-    loanDecimals = 18,
+  position: DynamicLoanPosition,
+  loanDecimals = 18,
 ): DynamicLoanRepaymentResult {
-    const normalizedDebt = new Decimal(
-        position.normalizedDebt ?? position.principal,
-        loanDecimals,
-    );
+  const normalizedDebt = new Decimal(
+    position.normalizedDebt ?? position.principal,
+    loanDecimals,
+  );
 
-    // position.rate is already a per-second rate in 18 decimals
-    const rawRate = MathLib.wTaylorCompounded(position.rate, ONE_YEAR_SECONDS);
-    const rateDecimal = new Decimal(rawRate, 18);
+  // position.rate is already a per-second rate in 18 decimals
+  const rawRate = MathLib.wTaylorCompounded(position.rate, ONE_YEAR_SECONDS);
+  const rateDecimal = new Decimal(rawRate, 18);
 
-    // Total outstanding = normalized debt × (1 + rate)
-    const currentTotalRepay = normalizedDebt.mul(rateDecimal.add(Decimal.ONE));
+  // Total outstanding = normalized debt × (1 + rate)
+  const currentTotalRepay = normalizedDebt.mul(rateDecimal.add(Decimal.ONE));
 
-    const principal = normalizedDebt;
-    const tenMinutesRawRate = MathLib.wTaylorCompounded(
-        position.rate,
-        TEN_MINUTES_SECONDS,
-    );
-    const tenMinutesRateDecimal = new Decimal(tenMinutesRawRate, 18);
+  const principal = normalizedDebt;
+  const tenMinutesRawRate = MathLib.wTaylorCompounded(
+    position.rate,
+    TEN_MINUTES_SECONDS,
+  );
+  const tenMinutesRateDecimal = new Decimal(tenMinutesRawRate, 18);
 
-    const tenMinutesInterest = principal.mul(tenMinutesRateDecimal.toString(18));
+  const tenMinutesInterest = principal.mul(tenMinutesRateDecimal.toString(18));
 
-    // add additional 10 minutes interest to the current total repay
-    const totalRepay = currentTotalRepay.add(tenMinutesInterest);
+  // add additional 10 minutes interest to the current total repay
+  const totalRepay = currentTotalRepay.add(tenMinutesInterest);
 
-    const interest = totalRepay.sub(normalizedDebt);
+  const interest = totalRepay.sub(normalizedDebt);
 
-    return {
-        totalRepay,
-        principal: normalizedDebt,
-        interest,
-        rate: rateDecimal,
-    };
+  return {
+    totalRepay,
+    principal: normalizedDebt,
+    interest,
+    rate: rateDecimal,
+  };
 }
 
 /**
@@ -99,42 +99,42 @@ export function calculateDynamicLoanRepayment(
  * @returns Object containing total repay amount and breakdown of principal, interest, and penalty
  */
 export function calculateFixedLoanRepayment(
-    position: FixedLoanPosition,
-    currentTime?: bigint,
+  position: FixedLoanPosition,
+  currentTime?: bigint,
 ): FixedLoanRepaymentResult {
-    const remainingPrincipal = position.principal - position.principalRepaid;
+  const remainingPrincipal = position.principal - position.principalRepaid;
 
-    const now = currentTime ?? getCurrentRoundedTimestamp();
+  const now = currentTime ?? getCurrentRoundedTimestamp();
 
-    const duration = now - position.start;
-    const termDuration = position.end - position.start;
+  const duration = now - position.start;
+  const termDuration = position.end - position.start;
 
-    // Calculate APR minus 1 (stored as 1 + rate)
-    const rateMinusScale = normalizeAprRate(position.apr);
-    const interestPerSecond = rateMinusScale / BigInt(ONE_YEAR_SECONDS);
+  // Calculate APR minus 1 (stored as 1 + rate)
+  const rateMinusScale = normalizeAprRate(position.apr);
+  const interestPerSecond = rateMinusScale / BigInt(ONE_YEAR_SECONDS);
 
-    // Calculate interest accrued
-    const interestAmount =
-        (interestPerSecond * remainingPrincipal * duration) / RATE_SCALE_27;
+  // Calculate interest accrued
+  const interestAmount =
+    (interestPerSecond * remainingPrincipal * duration) / RATE_SCALE_27;
 
-    // Calculate early repayment penalty if before maturity
-    let penalty = 0n;
-    if (duration < termDuration) {
-        const remainingDuration = termDuration - duration;
-        const denominator =
-            (2n * RATE_SCALE_27) / remainingDuration / interestPerSecond - 1n;
-        if (denominator > 0n) {
-            penalty = remainingPrincipal / denominator;
-        }
+  // Calculate early repayment penalty if before maturity
+  let penalty = 0n;
+  if (duration < termDuration) {
+    const remainingDuration = termDuration - duration;
+    const denominator =
+      (2n * RATE_SCALE_27) / remainingDuration / interestPerSecond - 1n;
+    if (denominator > 0n) {
+      penalty = remainingPrincipal / denominator;
     }
+  }
 
-    const totalRepayBigInt = remainingPrincipal + interestAmount + penalty;
-    const totalRepay = new Decimal(totalRepayBigInt, 18);
+  const totalRepayBigInt = remainingPrincipal + interestAmount + penalty;
+  const totalRepay = new Decimal(totalRepayBigInt, 18);
 
-    return {
-        totalRepay,
-        principal: remainingPrincipal,
-        interest: interestAmount,
-        penalty,
-    };
+  return {
+    totalRepay,
+    principal: remainingPrincipal,
+    interest: interestAmount,
+    penalty,
+  };
 }
