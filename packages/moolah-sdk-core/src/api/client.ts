@@ -1,11 +1,17 @@
 import type { Address } from "viem";
 import type {
   ApiBaseResponse,
-  ApiTableParams,
+  ApiVaultListParams,
   ApiVaultList,
   ApiVaultInfo,
+  ApiMarketListParams,
   ApiMarketList,
   ApiMarketVaultList,
+  ApiHoldingsParams,
+  ApiHoldingsData,
+  ApiVaultHoldingsData,
+  ApiMarketHoldingsData,
+  ApiTableParams,
 } from "../types/api";
 import type { MarketInfo } from "../types/market";
 import { LISTA_API_URLS } from "../utils/apiChain";
@@ -37,15 +43,19 @@ export class MoolahApiClient {
 
   private async request<T>(
     path: string,
-    params?: Record<string, unknown> | undefined,
+    params?: Record<string, unknown> | URLSearchParams | undefined,
   ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
     if (params) {
-      Object.entries(params).forEach(([k, v]) => {
-        if (v !== undefined && v !== null && v !== "") {
-          url.searchParams.set(k, String(v));
-        }
-      });
+      if (params instanceof URLSearchParams) {
+        url.search = params.toString();
+      } else {
+        Object.entries(params).forEach(([k, v]) => {
+          if (v !== undefined && v !== null && v !== "") {
+            url.searchParams.set(k, String(v));
+          }
+        });
+      }
     }
 
     const res = await this.fetchFn(url.toString(), {
@@ -75,24 +85,29 @@ export class MoolahApiClient {
    * Get vault list from API
    */
   async getVaultList(
-    params: ApiTableParams & {
-      assets?: string[];
-      curators?: string[];
-      chain: string;
-    },
+    params: ApiVaultListParams,
   ): Promise<ApiVaultList> {
-    const searchParams: Record<string, unknown> = {
-      page: params.page,
-      pageSize: params.pageSize,
-      chain: params.chain,
-    };
-    if (params.sort) searchParams.sort = params.sort;
-    if (params.order) searchParams.order = params.order;
-    if (params.zone !== undefined) searchParams.zone = params.zone;
-    if (params.keyword) searchParams.keyword = params.keyword;
-    if (params.assets?.length) searchParams.assets = params.assets.join(",");
-    if (params.curators?.length)
-      searchParams.curators = params.curators.join(",");
+    const searchParams = new URLSearchParams();
+    searchParams.set("page", String(params.page));
+    searchParams.set("pageSize", String(params.pageSize));
+
+    if (Array.isArray(params.chain)) {
+      const chains = params.chain.filter(Boolean);
+      if (chains.length > 0) searchParams.set("chain", chains.join(","));
+    } else if (params.chain) {
+      searchParams.set("chain", params.chain);
+    }
+
+    if (params.sort) searchParams.set("sort", params.sort);
+    if (params.order) searchParams.set("order", params.order);
+    if (params.zone !== undefined) searchParams.set("zone", String(params.zone));
+    if (params.keyword) searchParams.set("keyword", params.keyword);
+    for (const asset of params.assets ?? []) {
+      if (asset) searchParams.append("assets[]", asset);
+    }
+    for (const curator of params.curators ?? []) {
+      if (curator) searchParams.append("curators[]", curator);
+    }
 
     return this.request<ApiVaultList>(`${API_PREFIX}/vault/list`, searchParams);
   }
@@ -108,31 +123,61 @@ export class MoolahApiClient {
    * Get market list from API
    */
   async getMarketList(
-    params: ApiTableParams & {
-      loans?: string[];
-      collaterals?: string[];
-      termType?: number;
-      chain: string;
-    },
+    params: ApiMarketListParams,
   ): Promise<ApiMarketList> {
-    const searchParams: Record<string, unknown> = {
-      page: params.page,
-      pageSize: params.pageSize,
-      chain: params.chain,
-    };
-    if (params.sort) searchParams.sort = params.sort;
-    if (params.order) searchParams.order = params.order;
-    if (params.zone !== undefined) searchParams.zone = params.zone;
-    if (params.keyword) searchParams.keyword = params.keyword;
-    if (params.loans?.length) searchParams.loans = params.loans.join(",");
-    if (params.collaterals?.length)
-      searchParams.collaterals = params.collaterals.join(",");
-    if (params.termType !== undefined) searchParams.termType = params.termType;
+    const searchParams = new URLSearchParams();
+    searchParams.set("page", String(params.page));
+    searchParams.set("pageSize", String(params.pageSize));
+
+    if (Array.isArray(params.chain)) {
+      const chains = params.chain.filter(Boolean);
+      if (chains.length > 0) searchParams.set("chain", chains.join(","));
+    } else if (params.chain) {
+      searchParams.set("chain", params.chain);
+    }
+
+    if (params.sort) searchParams.set("sort", params.sort);
+    if (params.order) searchParams.set("order", params.order);
+    if (params.zone !== undefined) searchParams.set("zone", String(params.zone));
+    if (params.keyword) searchParams.set("keyword", params.keyword);
+    for (const loan of params.loans ?? []) {
+      if (loan) searchParams.append("loans[]", loan);
+    }
+    for (const collateral of params.collaterals ?? []) {
+      if (collateral) searchParams.append("collaterals[]", collateral);
+    }
+    if (params.termType !== undefined) {
+      searchParams.set("termType", String(params.termType));
+    }
+    if (params.smartLendingChecked !== undefined) {
+      searchParams.set(
+        "smartLendingChecked",
+        String(params.smartLendingChecked),
+      );
+    }
 
     return this.request<ApiMarketList>(
       `${API_PREFIX}/borrow/markets`,
       searchParams,
     );
+  }
+
+  /**
+   * Get user holdings from API.
+   * Supports both vault and market holdings via `type`.
+   */
+  async getHoldings(
+    params: Omit<ApiHoldingsParams, "type"> & { type: "vault" },
+  ): Promise<ApiVaultHoldingsData>;
+  async getHoldings(
+    params: Omit<ApiHoldingsParams, "type"> & { type: "market" },
+  ): Promise<ApiMarketHoldingsData>;
+  async getHoldings(params: ApiHoldingsParams): Promise<ApiHoldingsData>;
+  async getHoldings(params: ApiHoldingsParams): Promise<ApiHoldingsData> {
+    return this.request<ApiHoldingsData>(`${API_PREFIX}/one/holding`, {
+      userAddress: params.userAddress,
+      type: params.type,
+    });
   }
 
   /**

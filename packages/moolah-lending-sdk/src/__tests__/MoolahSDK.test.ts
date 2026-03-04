@@ -145,6 +145,12 @@ vi.mock("@lista-dao/moolah-sdk-core", async (importOriginal) => {
         address: "0x1111111111111111111111111111111111111111",
       }),
       getMarketList: vi.fn().mockResolvedValue({ list: [], total: 0 }),
+      getHoldings: vi.fn().mockImplementation((params: { type: string }) => {
+        if (params.type === "market") {
+          return Promise.resolve({ objs: [], cdps: [], type: "market" });
+        }
+        return Promise.resolve({ objs: [], cdps: [], type: "vault" });
+      }),
       getMarketVaultDetails: vi.fn().mockResolvedValue({ list: [], total: 0 }),
     })),
   };
@@ -281,6 +287,26 @@ describe("MoolahSDK", () => {
       });
       expect(result).toBeDefined();
       expect(result.list).toBeDefined();
+    });
+
+    it("should get holdings from API", async () => {
+      const result = await sdk.getHoldings({
+        userAddress: WALLET,
+        type: "vault",
+      });
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.objs)).toBe(true);
+      expect(result.type).toBe("vault");
+    });
+
+    it("should get market holdings from API", async () => {
+      const result = await sdk.getHoldings({
+        userAddress: WALLET,
+        type: "market",
+      });
+      expect(result).toBeDefined();
+      expect(Array.isArray(result.objs)).toBe(true);
+      expect(result.type).toBe("market");
     });
 
     it("should get market vault details from API", async () => {
