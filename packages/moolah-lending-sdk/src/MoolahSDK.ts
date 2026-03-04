@@ -23,7 +23,13 @@ import type {
   ApiVaultInfo,
   ApiMarketList,
   ApiMarketVaultList,
+  ApiHoldingsParams,
+  ApiHoldingsData,
+  ApiVaultHoldingsData,
+  ApiMarketHoldingsData,
   ApiTableParams,
+  ApiVaultListParams,
+  ApiMarketListParams,
   NetworkName,
   NetworkContracts,
   WriteMarketConfig,
@@ -312,13 +318,7 @@ export class MoolahSDK {
     return this.apiClient.getMarketInfo(marketId);
   }
 
-  async getVaultList(
-    params: ApiTableParams & {
-      assets?: string[];
-      curators?: string[];
-      chain: string;
-    },
-  ): Promise<ApiVaultList> {
+  async getVaultList(params: ApiVaultListParams): Promise<ApiVaultList> {
     return this.apiClient.getVaultList(params);
   }
 
@@ -326,15 +326,28 @@ export class MoolahSDK {
     return this.apiClient.getVaultInfo(address);
   }
 
-  async getMarketList(
-    params: ApiTableParams & {
-      loans?: string[];
-      collaterals?: string[];
-      termType?: number;
-      chain: string;
-    },
-  ): Promise<ApiMarketList> {
+  async getMarketList(params: ApiMarketListParams): Promise<ApiMarketList> {
     return this.apiClient.getMarketList(params);
+  }
+
+  async getHoldings(
+    params: Omit<ApiHoldingsParams, "type"> & { type: "vault" },
+  ): Promise<ApiVaultHoldingsData>;
+  async getHoldings(
+    params: Omit<ApiHoldingsParams, "type"> & { type: "market" },
+  ): Promise<ApiMarketHoldingsData>;
+  async getHoldings(params: ApiHoldingsParams): Promise<ApiHoldingsData>;
+  async getHoldings(params: ApiHoldingsParams): Promise<ApiHoldingsData> {
+    if (params.type === "vault") {
+      return this.apiClient.getHoldings({
+        userAddress: params.userAddress,
+        type: "vault",
+      });
+    }
+    return this.apiClient.getHoldings({
+      userAddress: params.userAddress,
+      type: "market",
+    });
   }
 
   async getMarketVaultDetails(

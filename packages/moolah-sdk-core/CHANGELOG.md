@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.4
+
+### Patch Changes
+
+- Enhance Moolah SDK with holdings functionality and improve API parameter handling
+
 ## 1.0.3
 
 ### Patch Changes

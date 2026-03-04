@@ -123,7 +123,7 @@ const chain = sdk.getApiChain(chainId); // "bsc" or "ethereum"
 
 // Market list with filters
 const markets = await sdk.getMarketList({
-  chain,
+  chain: [chain, "ethereum"], // also supports single string
   page: 1,
   pageSize: 20,
   sort: "rate", // Sort field
@@ -133,11 +133,12 @@ const markets = await sdk.getMarketList({
   loans: ["USDT"], // Filter by loan tokens
   collaterals: ["ETH"], // Filter by collateral tokens
   termType: 0, // 0 = flexible, 1 = fixed
+  smartLendingChecked: true, // Optional smart lending filter
 });
 
 // Vault list with filters
 const vaults = await sdk.getVaultList({
-  chain,
+  chain: [chain, "ethereum"], // also supports single string
   page: 1,
   pageSize: 20,
   sort: "apy",
@@ -153,6 +154,12 @@ const marketInfo = await sdk.getMarketInfo(chainId, marketId);
 
 // Vault metadata
 const vaultMeta = await sdk.getVaultMetadata(vaultAddress);
+
+// User holdings by type ("vault" | "market")
+const vaultHoldings = await sdk.getHoldings({
+  userAddress: walletAddress,
+  type: "vault",
+});
 
 // Vaults for a market
 const marketVaults = await sdk.getMarketVaultDetails(marketId, {
