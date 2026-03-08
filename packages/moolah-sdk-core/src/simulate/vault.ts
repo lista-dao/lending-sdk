@@ -5,7 +5,7 @@
  * For internal: Following lista-mono simulateVaultDepositAtomF/simulateVaultWithdrawAtomF patterns.
  */
 
-import { Decimal } from "../utils/decimal";
+import { Decimal } from "../utils/decimal.js";
 
 /**
  * Parameters for vault deposit simulation

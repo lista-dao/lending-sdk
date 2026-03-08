@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Address } from "viem";
-import { MoolahSDK } from "../MoolahSDK";
+import { MoolahSDK } from "../MoolahSDK.js";
 
 // Mock viem
 vi.mock("viem", async () => {

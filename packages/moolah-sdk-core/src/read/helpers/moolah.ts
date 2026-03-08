@@ -1,6 +1,6 @@
 import type { Address, PublicClient } from "viem";
-import type { MarketParams, MarketState } from "../../types/market";
-import { MOOLAH_ABI } from "../../contracts/abis";
+import type { MarketParams, MarketState } from "../../types/market.js";
+import { MOOLAH_ABI } from "../../contracts/abis/index.js";
 
 /**
  * Get market parameters

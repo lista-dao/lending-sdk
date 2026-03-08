@@ -4,7 +4,7 @@ import {
   getCurrentRoundedTimestamp,
   calculateDynamicLoanRepayment,
   calculateFixedLoanRepayment,
-} from "../calculations/loan";
+} from "../calculations/loan.js";
 
 const RATE_SCALE_27 = 10n ** 27n;
 const DECIMAL_SCALE = 10n ** 18n;

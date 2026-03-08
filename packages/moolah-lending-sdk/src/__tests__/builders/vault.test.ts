@@ -4,7 +4,7 @@ import { zeroAddress } from "viem";
 import {
   buildVaultDepositSteps,
   buildVaultWithdrawSteps,
-} from "../../builders/vault";
+} from "../../builders/vault.js";
 import {
   Decimal,
   type VaultInfo,

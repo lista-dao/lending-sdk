@@ -12,9 +12,9 @@ import type {
   ApiVaultHoldingsData,
   ApiMarketHoldingsData,
   ApiTableParams,
-} from "../types/api";
-import type { MarketInfo } from "../types/market";
-import { LISTA_API_URLS } from "../utils/apiChain";
+} from "../types/api.js";
+import type { MarketInfo } from "../types/market.js";
+import { LISTA_API_URLS } from "../utils/apiChain.js";
 
 const SUCCESS_CODE = "000000000";
 const API_PREFIX = "/api/moolah";

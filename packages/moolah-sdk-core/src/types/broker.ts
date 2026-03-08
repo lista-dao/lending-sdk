@@ -1,8 +1,8 @@
 import type { Address } from "viem";
-import type { Decimal } from "../utils/decimal";
+import type { Decimal } from "../utils/decimal.js";
 
-export type { FixedLoanPosition, DynamicLoanPosition } from "./loan";
-import type { FixedLoanPosition, DynamicLoanPosition } from "./loan";
+export type { FixedLoanPosition, DynamicLoanPosition } from "./loan.js";
+import type { FixedLoanPosition, DynamicLoanPosition } from "./loan.js";
 
 /**
  * Fixed term rate option

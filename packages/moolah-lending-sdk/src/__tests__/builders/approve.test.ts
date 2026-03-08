@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PublicClient, Address } from "viem";
-import { buildApproveSteps, ERC20_APPROVE_ABI } from "../../builders/approve";
+import { buildApproveSteps, ERC20_APPROVE_ABI } from "../../builders/approve.js";
 
 const mockReadContract = vi.fn();
 

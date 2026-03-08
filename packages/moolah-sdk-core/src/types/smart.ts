@@ -1,8 +1,8 @@
 import type { Address } from "viem";
-import type { Decimal } from "../utils/decimal";
-import type { TokenInfo } from "./common";
+import type { Decimal } from "../utils/decimal.js";
+import type { TokenInfo } from "./common.js";
 
-export type { SmartMarketUserData, SmartMarketInfo } from "./market";
+export type { SmartMarketUserData, SmartMarketInfo } from "./market.js";
 
 /**
  * Smart Market extra info from chain

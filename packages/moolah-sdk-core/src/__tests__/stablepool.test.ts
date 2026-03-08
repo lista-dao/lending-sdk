@@ -6,7 +6,7 @@ import {
   getYD,
   getMaxX,
   getMaxY,
-} from "../calculations/stablepool";
+} from "../calculations/stablepool.js";
 
 const WEI = 10n ** 18n;
 

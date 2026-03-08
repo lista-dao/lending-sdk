@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import type { NetworkName, NetworkContracts } from "./types";
+import type { NetworkName, NetworkContracts } from "./types.js";
 
 /**
  * USDT addresses that require special approve handling (reset to 0 first)

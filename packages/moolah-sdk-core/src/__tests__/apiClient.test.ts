@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MoolahApiClient } from "../api/client";
+import { MoolahApiClient } from "../api/client.js";
 
 function makeSuccessResponse<T>(data: T): Response {
   return {

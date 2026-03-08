@@ -1,4 +1,4 @@
-import { Decimal } from "../utils/decimal";
+import { Decimal } from "../utils/decimal.js";
 import { MathLib } from "@morpho-org/blue-sdk";
 
 import type {
@@ -6,7 +6,7 @@ import type {
   DynamicLoanRepaymentResult,
   FixedLoanPosition,
   FixedLoanRepaymentResult,
-} from "../types/loan";
+} from "../types/loan.js";
 
 /**
  * Constants for loan calculations

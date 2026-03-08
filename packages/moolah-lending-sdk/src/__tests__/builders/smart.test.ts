@@ -8,7 +8,7 @@ import {
   buildSmartWithdrawCollateralSteps,
   buildSmartWithdrawCollateralFixedSteps,
   buildSmartRepaySteps,
-} from "../../builders/smart";
+} from "../../builders/smart.js";
 import type { WriteSmartMarketConfig } from "@lista-dao/moolah-sdk-core";
 
 const mockReadContract = vi.fn();

@@ -1,5 +1,5 @@
 import type { Address } from "viem";
-import type { Decimal } from "../utils/decimal";
+import type { Decimal } from "../utils/decimal.js";
 
 /**
  * Vault asset information

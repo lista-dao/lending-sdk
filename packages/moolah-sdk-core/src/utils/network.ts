@@ -1,4 +1,4 @@
-import type { NetworkName } from "../contracts/types";
+import type { NetworkName } from "../contracts/types.js";
 
 /**
  * Get native currency symbol for a network

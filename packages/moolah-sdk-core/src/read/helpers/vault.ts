@@ -1,5 +1,5 @@
 import type { Address, PublicClient } from "viem";
-import { MOOLAH_VAULT_ABI } from "../../contracts/abis";
+import { MOOLAH_VAULT_ABI } from "../../contracts/abis/index.js";
 
 /**
  * Get vault total assets

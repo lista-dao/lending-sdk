@@ -6,7 +6,7 @@ import {
   buildBorrowSteps,
   buildRepaySteps,
   buildWithdrawSteps,
-} from "../../builders/market";
+} from "../../builders/market.js";
 import type { WriteMarketConfig } from "@lista-dao/moolah-sdk-core";
 
 const mockReadContract = vi.fn();
