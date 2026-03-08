@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { Decimal } from "../utils/decimal";
-import { simulateVaultDeposit, simulateVaultWithdraw } from "../simulate/vault";
+import { Decimal } from "../utils/decimal.js";
+import { simulateVaultDeposit, simulateVaultWithdraw } from "../simulate/vault.js";
 import {
   simulateMarketBorrow,
   simulateMarketRepay,
@@ -9,7 +9,7 @@ import {
   simulateComputeWithdrawable,
   simulateComputeLiqPriceRate,
   MARKET_THRESHOLD,
-} from "../simulate/market";
+} from "../simulate/market.js";
 import {
   simulateSmartMarketBorrow,
   simulateSmartMarketRepay,
@@ -18,7 +18,7 @@ import {
   computeSmartWithdrawable,
   breakdownLp,
   SMART_THRESHOLD,
-} from "../simulate/smart";
+} from "../simulate/smart.js";
 
 describe("Vault Simulation", () => {
   describe("simulateVaultDeposit", () => {

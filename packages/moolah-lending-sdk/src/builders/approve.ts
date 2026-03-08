@@ -1,7 +1,7 @@
 import type { Address, PublicClient } from "viem";
 import { isUsdtLikeToken, type NetworkName } from "@lista-dao/moolah-sdk-core";
-import type { ChainId, StepParam } from "../types";
-import { buildCallParams } from "../utils";
+import type { ChainId, StepParam } from "../types.js";
+import { buildCallParams } from "../utils.js";
 
 export const ERC20_APPROVE_ABI = [
   {

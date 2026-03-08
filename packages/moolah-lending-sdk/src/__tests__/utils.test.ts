@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCallParams } from "../utils";
+import { buildCallParams } from "../utils.js";
 
 describe("buildCallParams", () => {
   const mockAbi = [

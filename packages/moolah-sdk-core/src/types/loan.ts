@@ -1,4 +1,4 @@
-import type { Decimal } from "../utils/decimal";
+import type { Decimal } from "../utils/decimal.js";
 
 /**
  * Fixed term loan position

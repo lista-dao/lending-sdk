@@ -6,8 +6,8 @@ import {
   RoundingMode,
   getTenPower,
   parseNumber,
-} from "../utils/fraction";
-import { Decimal } from "../utils/decimal";
+} from "../utils/fraction.js";
+import { Decimal } from "../utils/decimal.js";
 
 describe("Fraction dp edge cases", () => {
   it("should use CEILING mode", () => {

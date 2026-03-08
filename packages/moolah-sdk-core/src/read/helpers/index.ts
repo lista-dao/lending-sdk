@@ -1,5 +1,5 @@
 // ERC20 helpers
-export { getERC20Info, getERC20Balance } from "./erc20";
+export { getERC20Info, getERC20Balance } from "./erc20.js";
 
 // Moolah contract helpers
 export {
@@ -10,7 +10,7 @@ export {
   getMinLoan,
   getProvider,
   isWhiteList,
-} from "./moolah";
+} from "./moolah.js";
 
 // Vault helpers
 export {
@@ -20,7 +20,7 @@ export {
   getVaultProvider,
   getVaultBalance,
   isVaultWhiteList,
-} from "./vault";
+} from "./vault.js";
 
 // Interest rate model helpers
 export {
@@ -28,4 +28,4 @@ export {
   getRateCap,
   getRateFloor,
   getRateAtTarget,
-} from "./interestRateModel";
+} from "./interestRateModel.js";

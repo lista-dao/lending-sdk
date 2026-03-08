@@ -6,7 +6,7 @@ import {
   Fraction,
   getTenPower,
   RoundingMode,
-} from "./fraction";
+} from "./fraction.js";
 
 export class Decimal extends Fraction {
   public readonly decimal: number;

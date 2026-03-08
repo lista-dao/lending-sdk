@@ -9,9 +9,9 @@ import {
   type WriteSmartMarketConfig,
   type SmartMarketUserData,
 } from "@lista-dao/moolah-sdk-core";
-import type { ChainId, StepParam } from "../types";
-import { buildCallParams } from "../utils";
-import { buildApproveSteps } from "./approve";
+import type { ChainId, StepParam } from "../types.js";
+import { buildCallParams } from "../utils.js";
+import { buildApproveSteps } from "./approve.js";
 
 export interface SmartBuilderDeps {
   publicClient: PublicClient;

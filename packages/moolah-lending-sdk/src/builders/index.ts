@@ -2,19 +2,19 @@ export {
   ERC20_APPROVE_ABI,
   buildApproveSteps,
   type BuildApproveParams,
-} from "./approve";
+} from "./approve.js";
 export {
   buildSupplySteps,
   buildBorrowSteps,
   buildRepaySteps,
   buildWithdrawSteps,
   type MarketBuilderDeps,
-} from "./market";
+} from "./market.js";
 export {
   buildVaultDepositSteps,
   buildVaultWithdrawSteps,
   type VaultBuilderDeps,
-} from "./vault";
+} from "./vault.js";
 export {
   buildSmartSupplyDexLpSteps,
   buildSmartSupplyCollateralSteps,
@@ -23,5 +23,5 @@ export {
   buildSmartWithdrawCollateralFixedSteps,
   buildSmartRepaySteps,
   type SmartBuilderDeps,
-} from "./smart";
-export { buildBrokerBorrowSteps, buildBrokerRepaySteps } from "./broker";
+} from "./smart.js";
+export { buildBrokerBorrowSteps, buildBrokerRepaySteps } from "./broker.js";

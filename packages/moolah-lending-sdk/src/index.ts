@@ -1,6 +1,6 @@
-import { MoolahSDK } from "./MoolahSDK";
+import { MoolahSDK } from "./MoolahSDK.js";
 
-export { MoolahSDK } from "./MoolahSDK";
+export { MoolahSDK } from "./MoolahSDK.js";
 
 export type {
   MoolahSDKConfig,
@@ -21,7 +21,7 @@ export type {
   BuildSmartRepayParams,
   BuildBrokerBorrowParams,
   BuildBrokerRepayParams,
-} from "./types";
+} from "./types.js";
 
 export { MoolahApiClient } from "@lista-dao/moolah-sdk-core";
 export type {
@@ -82,4 +82,4 @@ export {
   type MarketBuilderDeps,
   type VaultBuilderDeps,
   type SmartBuilderDeps,
-} from "./builders";
+} from "./builders/index.js";

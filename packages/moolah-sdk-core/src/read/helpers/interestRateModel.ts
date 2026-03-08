@@ -1,6 +1,6 @@
 import type { Address, PublicClient } from "viem";
-import type { MarketParams, MarketState } from "../../types/market";
-import { INTEREST_RATE_MODEL_ABI } from "../../contracts/abis";
+import type { MarketParams, MarketState } from "../../types/market.js";
+import { INTEREST_RATE_MODEL_ABI } from "../../contracts/abis/index.js";
 
 /**
  * Get borrow rate view

@@ -1,6 +1,6 @@
 import type { Abi, Address } from "viem";
 import { encodeFunctionData } from "viem";
-import type { ChainId, ContractCallParams } from "./types";
+import type { ChainId, ContractCallParams } from "./types.js";
 
 export function buildCallParams(params: {
   to: Address;

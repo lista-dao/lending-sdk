@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.5
+
+### Patch Changes
+
+- Refactor imports in Moolah SDK to use .js extensions for consistency across all modules. This change affects various files including builders, types, utils, and tests, ensuring compatibility with ES module standards.
+
 ## 1.0.4
 
 ### Patch Changes

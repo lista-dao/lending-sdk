@@ -7,7 +7,7 @@ import {
   computeBorrowRate,
   getInterestRates,
   getFixedRateInterestRates,
-} from "../calculations/interestRate";
+} from "../calculations/interestRate.js";
 
 describe("getAnnualBorrowRate", () => {
   it("should convert per-second rate to annual rate", () => {

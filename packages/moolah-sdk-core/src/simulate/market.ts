@@ -5,7 +5,7 @@
  * For internal: Following lista-mono simulateMarketBorrowAtomF/simulateMarketRepayAtomF patterns.
  */
 
-import { Decimal } from "../utils/decimal";
+import { Decimal } from "../utils/decimal.js";
 
 /** Default LTV threshold (98%) for safety margin calculations */
 export const MARKET_THRESHOLD = new Decimal(98n, 2);

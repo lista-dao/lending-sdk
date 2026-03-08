@@ -1,4 +1,4 @@
-import type { NetworkName } from "../contracts/types";
+import type { NetworkName } from "../contracts/types.js";
 
 export type ApiChain = "bsc" | "ethereum"; // | 'bscTest'
 

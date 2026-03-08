@@ -36,25 +36,25 @@ import type {
 } from "@lista-dao/moolah-sdk-core";
 
 import { MoolahApiClient } from "@lista-dao/moolah-sdk-core";
-import { getMarketExtraInfo } from "./read/market/getMarketExtraInfo";
-import { getMarketUserData } from "./read/market/getMarketUserData";
-import { getVaultInfo } from "./read/vault/getVaultInfo";
-import { getVaultUserData } from "./read/vault/getVaultUserData";
-import { getSmartMarketExtraInfo } from "./read/smart/getSmartMarketExtraInfo";
-import { getSmartMarketUserData } from "./read/smart/getSmartMarketUserData";
-import { getBrokerFixedTerms } from "./read/broker/getBrokerFixedTerms";
-import { getBrokerUserPositions } from "./read/broker/getBrokerUserPositions";
+import { getMarketExtraInfo } from "./read/market/getMarketExtraInfo.js";
+import { getMarketUserData } from "./read/market/getMarketUserData.js";
+import { getVaultInfo } from "./read/vault/getVaultInfo.js";
+import { getVaultUserData } from "./read/vault/getVaultUserData.js";
+import { getSmartMarketExtraInfo } from "./read/smart/getSmartMarketExtraInfo.js";
+import { getSmartMarketUserData } from "./read/smart/getSmartMarketUserData.js";
+import { getBrokerFixedTerms } from "./read/broker/getBrokerFixedTerms.js";
+import { getBrokerUserPositions } from "./read/broker/getBrokerUserPositions.js";
 
 import {
   buildSupplySteps,
   buildBorrowSteps,
   buildRepaySteps,
   buildWithdrawSteps,
-} from "./builders/market";
+} from "./builders/market.js";
 import {
   buildVaultDepositSteps,
   buildVaultWithdrawSteps,
-} from "./builders/vault";
+} from "./builders/vault.js";
 import {
   buildSmartSupplyDexLpSteps,
   buildSmartSupplyCollateralSteps,
@@ -62,11 +62,11 @@ import {
   buildSmartWithdrawCollateralSteps,
   buildSmartWithdrawCollateralFixedSteps,
   buildSmartRepaySteps,
-} from "./builders/smart";
+} from "./builders/smart.js";
 import {
   buildBrokerBorrowSteps,
   buildBrokerRepaySteps,
-} from "./builders/broker";
+} from "./builders/broker.js";
 
 import type {
   MoolahSDKConfig,
@@ -86,7 +86,7 @@ import type {
   BuildBrokerBorrowParams,
   BuildBrokerRepayParams,
   StepParam,
-} from "./types";
+} from "./types.js";
 
 const CHAIN_ID_TO_NETWORK: Record<string, NetworkName> = {
   "1": "ethereum",

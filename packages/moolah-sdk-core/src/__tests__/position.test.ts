@@ -7,7 +7,7 @@ import {
   computeLiquidationPrice,
   simulateBorrow,
   simulateRepay,
-} from "../calculations/position";
+} from "../calculations/position.js";
 
 const DECIMAL_SCALE = 10n ** 18n;
 

@@ -1,6 +1,6 @@
 import type { Address } from "viem";
-import type { Decimal } from "../utils/decimal";
-import type { TokenInfo } from "./common";
+import type { Decimal } from "../utils/decimal.js";
+import type { TokenInfo } from "./common.js";
 
 /**
  * Configuration for write operations (supply, borrow, repay, withdraw).

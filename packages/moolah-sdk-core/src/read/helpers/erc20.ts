@@ -1,6 +1,6 @@
 import type { Address, PublicClient } from "viem";
-import { ERC20_ABI } from "../../contracts/abis";
-import type { TokenInfo } from "../../types/common";
+import { ERC20_ABI } from "../../contracts/abis/index.js";
+import type { TokenInfo } from "../../types/common.js";
 
 /**
  * Get ERC20 token information

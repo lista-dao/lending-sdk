@@ -5,6 +5,6 @@
  * All functions use Decimal for precision.
  */
 
-export * from "./vault";
-export * from "./market";
-export * from "./smart";
+export * from "./vault.js";
+export * from "./market.js";
+export * from "./smart.js";

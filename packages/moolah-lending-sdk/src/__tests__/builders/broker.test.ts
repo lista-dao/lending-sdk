@@ -3,7 +3,7 @@ import type { PublicClient, Address } from "viem";
 import {
   buildBrokerBorrowSteps,
   buildBrokerRepaySteps,
-} from "../../builders/broker";
+} from "../../builders/broker.js";
 
 const mockReadContract = vi.fn();
 const mockPublicClient = {
