@@ -1,6 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Address } from "viem";
+import { createPublicClient, type Address, type PublicClient } from "viem";
+import {
+  Decimal,
+  type MarketExtraInfo,
+  type MarketUserData,
+} from "@lista-dao/moolah-sdk-core";
 import { MoolahSDK } from "../MoolahSDK.js";
+
+const mockGetMarketInfo = vi
+  .fn()
+  .mockResolvedValue({ id: "market1", name: "Test Market" });
 
 // Mock viem
 vi.mock("viem", async () => {
@@ -37,6 +46,10 @@ vi.mock("../read/market/getMarketExtraInfo", () => ({
     loanProvider: "0x0000000000000000000000000000000000000000",
     collateralIsNative: false,
     loanIsNative: false,
+    totalSupply: 1_000_000n * 10n ** 18n,
+    totalBorrow: 500_000n * 10n ** 18n,
+    LLTV: { gt: vi.fn().mockReturnValue(true) },
+    priceRate: { gt: vi.fn().mockReturnValue(true) },
   }),
 }));
 
@@ -44,6 +57,7 @@ vi.mock("../read/market/getMarketUserData", () => ({
   getMarketUserData: vi.fn().mockResolvedValue({
     borrowShares: 1000n,
     collateral: 2000n,
+    borrowed: 1000n,
     decimals: { c: 18, l: 18 },
     withdrawable: { roundDown: () => ({ numerator: 1500n }) },
     _getExtraRepayAmount: () => ({ roundDown: () => ({ numerator: 1100n }) }),
@@ -137,9 +151,7 @@ vi.mock("@lista-dao/moolah-sdk-core", async (importOriginal) => {
   return {
     ...actual,
     MoolahApiClient: vi.fn().mockImplementation(() => ({
-      getMarketInfo: vi
-        .fn()
-        .mockResolvedValue({ id: "market1", name: "Test Market" }),
+      getMarketInfo: mockGetMarketInfo,
       getVaultList: vi.fn().mockResolvedValue({ list: [], total: 0 }),
       getVaultInfo: vi.fn().mockResolvedValue({
         address: "0x1111111111111111111111111111111111111111",
@@ -166,6 +178,7 @@ describe("MoolahSDK", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetMarketInfo.mockClear();
     sdk = new MoolahSDK({
       rpcUrls: {
         "56": "https://bsc-rpc.example.com",
@@ -185,6 +198,19 @@ describe("MoolahSDK", () => {
         apiBaseUrl: "https://custom-api.example.com",
       });
       expect(customSdk).toBeDefined();
+    });
+
+    it("should use injected public clients when provided", async () => {
+      const injectedClient = {
+        readContract: vi.fn(),
+      } as unknown as PublicClient;
+      const customSdk = new MoolahSDK({
+        rpcUrls: { "56": "https://bsc-rpc.example.com" },
+        publicClients: { "56": injectedClient },
+      });
+
+      await customSdk.getMarketExtraInfo(56, MARKET_ID);
+      expect(createPublicClient).not.toHaveBeenCalled();
     });
   });
 
@@ -262,6 +288,7 @@ describe("MoolahSDK", () => {
     it("should get market info from API", async () => {
       const result = await sdk.getMarketInfo(56, MARKET_ID);
       expect(result).toBeDefined();
+      expect(mockGetMarketInfo).toHaveBeenCalledWith(MARKET_ID, "bsc");
     });
 
     it("should get vault list from API", async () => {
@@ -312,6 +339,56 @@ describe("MoolahSDK", () => {
     it("should get market vault details from API", async () => {
       const result = await sdk.getMarketVaultDetails(MARKET_ID);
       expect(result).toBeDefined();
+    });
+  });
+
+  describe("simulate methods", () => {
+    it("should simulate borrow position", async () => {
+      const result = await sdk.simulateBorrowPosition({
+        chainId: 56,
+        marketId: MARKET_ID,
+        walletAddress: WALLET,
+        supplyAssets: 100n * 10n ** 18n,
+        marketExtraInfo: {
+          totalSupply: new Decimal(1_000_000n * 10n ** 18n, 18),
+          totalBorrow: new Decimal(500_000n * 10n ** 18n, 18),
+          LLTV: new Decimal(800000000000000000n, 18),
+          priceRate: new Decimal(1n * 10n ** 18n, 18),
+          loanInfo: { decimals: 18 },
+          collateralInfo: { decimals: 18 },
+        } as unknown as MarketExtraInfo,
+        userData: {
+          collateral: new Decimal(1_000n * 10n ** 18n, 18),
+          borrowed: new Decimal(100n * 10n ** 18n, 18),
+        } as unknown as MarketUserData,
+      });
+
+      expect(result.simulation).toBeDefined();
+      expect(result.simulation.baseLoanable).toBeDefined();
+    });
+
+    it("should simulate repay position", async () => {
+      const result = await sdk.simulateRepayPosition({
+        chainId: 56,
+        marketId: MARKET_ID,
+        walletAddress: WALLET,
+        repayAssets: 10n * 10n ** 18n,
+        marketExtraInfo: {
+          totalSupply: new Decimal(1_000_000n * 10n ** 18n, 18),
+          totalBorrow: new Decimal(500_000n * 10n ** 18n, 18),
+          LLTV: new Decimal(800000000000000000n, 18),
+          priceRate: new Decimal(1n * 10n ** 18n, 18),
+          loanInfo: { decimals: 18 },
+          collateralInfo: { decimals: 18 },
+        } as unknown as MarketExtraInfo,
+        userData: {
+          collateral: new Decimal(1_000n * 10n ** 18n, 18),
+          borrowed: new Decimal(100n * 10n ** 18n, 18),
+        } as unknown as MarketUserData,
+      });
+
+      expect(result.simulation).toBeDefined();
+      expect(result.simulation.borrowed).toBeDefined();
     });
   });
 

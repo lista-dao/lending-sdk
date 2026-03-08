@@ -77,8 +77,10 @@ export class MoolahApiClient {
   /**
    * Get market metadata from API
    */
-  async getMarketInfo(marketId: Address): Promise<MarketInfo> {
-    return this.request<MarketInfo>(`${API_PREFIX}/market/${marketId}`);
+  async getMarketInfo(marketId: Address, chain?: string): Promise<MarketInfo> {
+    return this.request<MarketInfo>(`${API_PREFIX}/market/${marketId}`, {
+      chain,
+    });
   }
 
   /**

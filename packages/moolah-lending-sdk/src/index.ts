@@ -21,6 +21,12 @@ export type {
   BuildSmartRepayParams,
   BuildBrokerBorrowParams,
   BuildBrokerRepayParams,
+  SdkTransportConfig,
+  MarketRuntimeData,
+  SimulateBorrowPositionParams,
+  SimulateBorrowPositionResult,
+  SimulateRepayPositionParams,
+  SimulateRepayPositionResult,
 } from "./types.js";
 
 export { MoolahApiClient } from "@lista-dao/moolah-sdk-core";

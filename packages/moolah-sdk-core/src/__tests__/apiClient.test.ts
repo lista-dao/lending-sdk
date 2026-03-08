@@ -104,4 +104,18 @@ describe("MoolahApiClient list query serialization", () => {
     );
     expect(marketUrl.searchParams.get("type")).toBe("market");
   });
+
+  it("should serialize chain for market info", async () => {
+    await client.getMarketInfo(
+      "0x05e3a7a66945ca9af73f66660f22ffb36332fa54",
+      "bsc",
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.pathname).toBe(
+      "/api/moolah/market/0x05e3a7a66945ca9af73f66660f22ffb36332fa54",
+    );
+    expect(url.searchParams.get("chain")).toBe("bsc");
+  });
 });
