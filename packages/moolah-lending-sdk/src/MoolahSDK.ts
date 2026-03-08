@@ -1,11 +1,14 @@
 import type { Address, Chain, PublicClient } from "viem";
-import { createPublicClient, http } from "viem";
+import { createPublicClient, fallback, http } from "viem";
 import { bsc, mainnet } from "viem/chains";
 import {
   getContractAddress,
   getContractAddressOptional,
   getApiChain,
   LISTA_API_URLS,
+  Decimal,
+  simulateMarketBorrow,
+  simulateMarketRepay,
   toWriteConfig,
 } from "@lista-dao/moolah-sdk-core";
 import type {
@@ -32,6 +35,7 @@ import type {
   ApiMarketListParams,
   NetworkName,
   NetworkContracts,
+  SimulateMarketState,
   WriteMarketConfig,
 } from "@lista-dao/moolah-sdk-core";
 
@@ -85,6 +89,12 @@ import type {
   BuildSmartRepayParams,
   BuildBrokerBorrowParams,
   BuildBrokerRepayParams,
+  MarketRuntimeData,
+  SimulateBorrowPositionParams,
+  SimulateBorrowPositionResult,
+  SimulateRepayPositionParams,
+  SimulateRepayPositionResult,
+  SdkTransportConfig,
   StepParam,
 } from "./types.js";
 
@@ -102,6 +112,19 @@ const CHAIN_BY_NETWORK: Record<NetworkName, Chain> = {
   // sepolia: sepolia,
 };
 
+const EMPTY_TRANSPORT_CONFIG: SdkTransportConfig = {};
+
+function toMarketSimulationState(extraInfo: MarketExtraInfo): SimulateMarketState {
+  return {
+    totalSupply: extraInfo.totalSupply,
+    totalBorrow: extraInfo.totalBorrow,
+    LLTV: extraInfo.LLTV,
+    priceRate: extraInfo.priceRate,
+    loanDecimals: extraInfo.loanInfo.decimals,
+    collateralDecimals: extraInfo.collateralInfo.decimals,
+  };
+}
+
 export class MoolahSDK {
   private config: MoolahSDKConfig;
   private publicClients = new Map<string, PublicClient>();
@@ -113,6 +136,10 @@ export class MoolahSDK {
 
     const apiBaseUrl = config.apiBaseUrl ?? LISTA_API_URLS.prod;
     this.apiClient = new MoolahApiClient({ baseUrl: apiBaseUrl });
+
+    for (const [chainId, client] of Object.entries(config.publicClients ?? {})) {
+      this.publicClients.set(chainId, client);
+    }
   }
 
   private getNetwork(chainId: ChainId): NetworkName {
@@ -124,13 +151,30 @@ export class MoolahSDK {
     return network;
   }
 
-  private getRpcUrl(chainId: ChainId): string {
+  private getRpcUrls(chainId: ChainId): string[] {
     const id = String(chainId);
-    const rpcUrl = this.config.rpcUrls[id];
-    if (!rpcUrl) {
+    const value = this.config.rpcUrls[id];
+    if (!value) {
       throw new Error(`RPC URL not configured for chainId ${chainId}`);
     }
-    return rpcUrl;
+
+    const rpcUrls = (Array.isArray(value) ? value : [value]).filter(
+      (url): url is string => typeof url === "string" && url.trim().length > 0,
+    );
+    if (rpcUrls.length === 0) {
+      throw new Error(`RPC URL not configured for chainId ${chainId}`);
+    }
+
+    return rpcUrls;
+  }
+
+  private getTransportConfig(chainId: ChainId): SdkTransportConfig {
+    const id = String(chainId);
+    return {
+      ...EMPTY_TRANSPORT_CONFIG,
+      ...(this.config.transport ?? EMPTY_TRANSPORT_CONFIG),
+      ...(this.config.transportByChainId?.[id] ?? EMPTY_TRANSPORT_CONFIG),
+    };
   }
 
   private getPublicClient(chainId: ChainId): PublicClient {
@@ -139,12 +183,21 @@ export class MoolahSDK {
     if (cached) return cached;
 
     const network = this.getNetwork(chainId);
-    const rpcUrl = this.getRpcUrl(chainId);
     const chain = CHAIN_BY_NETWORK[network];
+    const rpcUrls = this.getRpcUrls(chainId);
+    const transportConfig = this.getTransportConfig(chainId);
+
+    const transports = rpcUrls.map((rpcUrl) =>
+      http(rpcUrl, {
+        timeout: transportConfig.timeout,
+        retryCount: transportConfig.retryCount,
+        retryDelay: transportConfig.retryDelay,
+      }),
+    );
 
     const client = createPublicClient({
       chain,
-      transport: http(rpcUrl),
+      transport: transports.length === 1 ? transports[0] : fallback(transports),
     });
 
     this.publicClients.set(id, client);
@@ -218,6 +271,25 @@ export class MoolahSDK {
   ): Promise<WriteMarketConfig> {
     const extraInfo = await this.getMarketExtraInfo(chainId, marketId);
     return toWriteConfig(extraInfo);
+  }
+
+  async getMarketRuntimeData(
+    chainId: ChainId,
+    marketId: Address,
+    walletAddress: Address,
+  ): Promise<MarketRuntimeData> {
+    const marketExtraInfo = await this.getMarketExtraInfo(chainId, marketId);
+    return {
+      marketExtraInfo,
+      marketInfo: toWriteConfig(marketExtraInfo),
+      userData: await this.getMarketUserData(
+        chainId,
+        marketId,
+        walletAddress,
+        undefined,
+        marketExtraInfo,
+      ),
+    };
   }
 
   async getVaultInfo(
@@ -315,7 +387,7 @@ export class MoolahSDK {
     chainId: ChainId,
     marketId: Address,
   ): Promise<MarketInfo> {
-    return this.apiClient.getMarketInfo(marketId);
+    return this.apiClient.getMarketInfo(marketId, this.getApiChain(chainId));
   }
 
   async getVaultList(params: ApiVaultListParams): Promise<ApiVaultList> {
@@ -355,6 +427,87 @@ export class MoolahSDK {
     params?: Omit<ApiTableParams, "zone">,
   ): Promise<ApiMarketVaultList> {
     return this.apiClient.getMarketVaultDetails(marketId, params);
+  }
+
+  // ===== Simulate Methods (Market) =====
+
+  async simulateBorrowPosition(
+    params: SimulateBorrowPositionParams,
+  ): Promise<SimulateBorrowPositionResult> {
+    const marketExtraInfo =
+      params.marketExtraInfo ??
+      (await this.getMarketExtraInfo(params.chainId, params.marketId));
+    const userData =
+      params.userData ??
+      (await this.getMarketUserData(
+        params.chainId,
+        params.marketId,
+        params.walletAddress,
+        undefined,
+        marketExtraInfo,
+      ));
+
+    const simulation = simulateMarketBorrow({
+      supplyAmount: new Decimal(
+        params.supplyAssets ?? 0n,
+        marketExtraInfo.collateralInfo.decimals,
+      ),
+      borrowAmount: new Decimal(
+        params.borrowAssets ?? 0n,
+        marketExtraInfo.loanInfo.decimals,
+      ),
+      userPosition: {
+        collateral: userData.collateral,
+        borrowed: userData.borrowed,
+      },
+      marketState: toMarketSimulationState(marketExtraInfo),
+    });
+
+    return {
+      marketExtraInfo,
+      userData,
+      simulation,
+    };
+  }
+
+  async simulateRepayPosition(
+    params: SimulateRepayPositionParams,
+  ): Promise<SimulateRepayPositionResult> {
+    const marketExtraInfo =
+      params.marketExtraInfo ??
+      (await this.getMarketExtraInfo(params.chainId, params.marketId));
+    const userData =
+      params.userData ??
+      (await this.getMarketUserData(
+        params.chainId,
+        params.marketId,
+        params.walletAddress,
+        undefined,
+        marketExtraInfo,
+      ));
+
+    const simulation = simulateMarketRepay({
+      repayAmount: new Decimal(
+        params.repayAssets ?? 0n,
+        marketExtraInfo.loanInfo.decimals,
+      ),
+      withdrawAmount: new Decimal(
+        params.withdrawAssets ?? 0n,
+        marketExtraInfo.collateralInfo.decimals,
+      ),
+      isRepayAll: Boolean(params.repayAll),
+      userPosition: {
+        collateral: userData.collateral,
+        borrowed: userData.borrowed,
+      },
+      marketState: toMarketSimulationState(marketExtraInfo),
+    });
+
+    return {
+      marketExtraInfo,
+      userData,
+      simulation,
+    };
   }
 
   // ===== Build Methods (Market) =====

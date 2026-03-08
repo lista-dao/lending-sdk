@@ -1,18 +1,30 @@
-import type { Abi, Address } from "viem";
+import type { Abi, Address, PublicClient } from "viem";
 import type {
   WriteMarketConfig,
   WriteSmartMarketConfig,
   VaultInfo,
   VaultUserData,
+  MarketExtraInfo,
   MarketUserData,
   SmartMarketUserData,
+  MarketBorrowSimulationResult,
+  MarketRepaySimulationResult,
 } from "@lista-dao/moolah-sdk-core";
 
 export type ChainId = number | string;
 
+export interface SdkTransportConfig {
+  timeout?: number;
+  retryCount?: number;
+  retryDelay?: number;
+}
+
 export interface MoolahSDKConfig {
-  rpcUrls: Record<string, string>;
+  rpcUrls: Record<string, string | string[]>;
   apiBaseUrl?: string;
+  transport?: SdkTransportConfig;
+  transportByChainId?: Record<string, SdkTransportConfig>;
+  publicClients?: Record<string, PublicClient>;
 }
 
 export interface ContractCallParams {
@@ -201,4 +213,43 @@ export interface BuildBrokerRepayParams {
   /** Optional loan token address for allowance checks */
   loanToken?: Address;
   walletAddress?: Address;
+}
+
+export interface MarketRuntimeData {
+  marketExtraInfo: MarketExtraInfo;
+  marketInfo: WriteMarketConfig;
+  userData: MarketUserData;
+}
+
+export interface SimulateBorrowPositionParams {
+  chainId: ChainId;
+  marketId: Address;
+  walletAddress: Address;
+  supplyAssets?: bigint;
+  borrowAssets?: bigint;
+  marketExtraInfo?: MarketExtraInfo;
+  userData?: MarketUserData;
+}
+
+export interface SimulateBorrowPositionResult {
+  marketExtraInfo: MarketExtraInfo;
+  userData: MarketUserData;
+  simulation: MarketBorrowSimulationResult;
+}
+
+export interface SimulateRepayPositionParams {
+  chainId: ChainId;
+  marketId: Address;
+  walletAddress: Address;
+  repayAssets?: bigint;
+  withdrawAssets?: bigint;
+  repayAll?: boolean;
+  marketExtraInfo?: MarketExtraInfo;
+  userData?: MarketUserData;
+}
+
+export interface SimulateRepayPositionResult {
+  marketExtraInfo: MarketExtraInfo;
+  userData: MarketUserData;
+  simulation: MarketRepaySimulationResult;
 }

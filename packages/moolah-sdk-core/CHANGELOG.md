@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.6
+
+### Patch Changes
+
+- Implement market simulation methods in MoolahSDK for borrowing and repaying positions. Introduce new types for simulation parameters and results, enhance transport configuration handling, and update tests to validate new functionality. This update improves the SDK's capability to simulate market interactions based on user data and market state.
+
 ## 1.0.5
 
 ### Patch Changes
