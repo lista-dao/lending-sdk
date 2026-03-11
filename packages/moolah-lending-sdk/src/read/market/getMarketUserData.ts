@@ -107,6 +107,7 @@ export async function getMarketUserData(
     fixedTermData && !fixedTermData.weightedBorrowRate.isZero()
       ? fixedTermData.weightedBorrowRate
       : marketExtraInfo.borrowRate;
+  const totalPenalty = fixedTermData?.totalPenalty ?? Decimal.ZERO;
 
   const _getExtraRepayAmount = () => {
     const now = BigInt(Math.round(Date.now() / 1000));
@@ -166,6 +167,7 @@ export async function getMarketUserData(
     collateral,
     borrowShares,
     borrowed: finalBorrowed,
+    totalPenalty,
     rawBorrowed: borrowed,
     borrowRate: finalBorrowRate,
     loanable,

@@ -3,7 +3,6 @@ import {
   Decimal,
   LENDING_BROKER_ABI,
   BROKER_RATE_CALCULATOR_ABI,
-  calculateDynamicLoanRepayment,
   calculateFixedLoanRepayment,
   type BrokerUserPositionsData,
   type FixedLoanPosition,
@@ -81,19 +80,18 @@ export async function getBrokerUserPositions(
   let dynamicOutstanding: Decimal | null = null;
 
   if (dynamicPosition?.principal && dynamicPosition.principal > 0n) {
-    const { totalRepay } = calculateDynamicLoanRepayment(
-      {
-        principal: dynamicPosition.principal,
-        normalizedDebt: dynamicPosition.normalizedDebt,
-        rate: dynamicRate,
-      },
+    const normalizedDebt = new Decimal(
+      dynamicPosition.normalizedDebt ?? dynamicPosition.principal,
       loanDecimals,
     );
-    dynamicOutstanding = totalRepay.roundDown(loanDecimals);
+    dynamicOutstanding = normalizedDebt
+      .mul(new Decimal(dynamicRate, 27))
+      .roundDown(loanDecimals);
   }
 
   // Calculate fixed positions data
   let fixedOutstanding = Decimal.ZERO;
+  let totalPenalty = Decimal.ZERO;
   let totalOutstanding = Decimal.ZERO;
   let weightedSum = Decimal.ZERO;
 
@@ -119,9 +117,18 @@ export async function getBrokerUserPositions(
       return;
     }
 
-    const { totalRepay } = calculateFixedLoanRepayment(position);
+    const {
+      principal: remainPrincipal,
+      interest,
+      penalty,
+    } = calculateFixedLoanRepayment(position);
+    const totalRepayNoPenalty = new Decimal(
+      remainPrincipal + interest,
+      loanDecimals,
+    );
 
-    fixedOutstanding = fixedOutstanding.add(totalRepay);
+    fixedOutstanding = fixedOutstanding.add(totalRepayNoPenalty);
+    totalPenalty = totalPenalty.add(new Decimal(penalty, loanDecimals));
 
     const duration =
       BigInt(position.end ?? 0n) > BigInt(position.start ?? 0n)
@@ -132,8 +139,8 @@ export async function getBrokerUserPositions(
       termRateByDuration.get(duration.toString()) ??
       new Decimal(normalizeAprRate(position.apr), 27);
 
-    totalOutstanding = totalOutstanding.add(totalRepay);
-    weightedSum = weightedSum.add(totalRepay.mul(normalizedFixedRate));
+    totalOutstanding = totalOutstanding.add(totalRepayNoPenalty);
+    weightedSum = weightedSum.add(totalRepayNoPenalty.mul(normalizedFixedRate));
   });
 
   // Calculate weighted borrow rate
@@ -149,6 +156,7 @@ export async function getBrokerUserPositions(
     dynamicRatePercent: currentFlexibleRate,
     dynamicOutstanding,
     fixedOutstanding,
+    totalPenalty,
     totalOutstanding,
     weightedBorrowRate,
     termRateByDuration,

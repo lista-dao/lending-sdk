@@ -34,6 +34,7 @@ export interface BrokerUserPositionsData {
   dynamicRatePercent: Decimal | null;
   dynamicOutstanding: Decimal | null;
   fixedOutstanding: Decimal;
+  totalPenalty: Decimal;
   totalOutstanding: Decimal;
   weightedBorrowRate: Decimal;
   termRateByDuration: Map<string, Decimal>;
