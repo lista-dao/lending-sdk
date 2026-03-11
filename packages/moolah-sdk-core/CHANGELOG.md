@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.9
+
+### Patch Changes
+
+- Refactor loan repayment calculations in getBrokerUserPositions to include total penalty in outstanding amounts. Update related types and market user data to accommodate new totalPenalty field, ensuring accurate financial data representation across the SDK.
+
 ## 1.0.8
 
 ### Patch Changes

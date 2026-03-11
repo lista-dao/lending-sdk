@@ -204,6 +204,7 @@ export interface MarketUserData {
   collateral: Decimal;
   borrowShares: bigint;
   borrowed: Decimal;
+  totalPenalty: Decimal;
   rawBorrowed: Decimal;
   borrowRate: Decimal;
   loanable: Decimal;
@@ -282,5 +283,6 @@ export interface UserFixedTermData {
   dynamicOutstanding: Decimal;
   fixedOutstanding: Decimal;
   totalBorrowed: Decimal;
+  totalPenalty: Decimal;
   weightedBorrowRate: Decimal;
 }

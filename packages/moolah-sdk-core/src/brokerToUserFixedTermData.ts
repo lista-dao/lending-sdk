@@ -14,6 +14,7 @@ export function brokerPositionsToUserFixedTermData(
     dynamicOutstanding: data.dynamicOutstanding ?? Decimal.ZERO,
     fixedOutstanding: data.fixedOutstanding,
     totalBorrowed: data.totalOutstanding,
+    totalPenalty: data.totalPenalty,
     weightedBorrowRate: data.weightedBorrowRate,
   };
 }
