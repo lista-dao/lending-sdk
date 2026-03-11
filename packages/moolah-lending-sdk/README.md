@@ -112,6 +112,23 @@ const brokerPositions = await sdk.getBrokerUserPositions(
   brokerAddress,
   userAddress,
 );
+
+// Fixed-term market: get user data with broker merged (borrowed/borrowRate from broker)
+// Broker address is typically from API (holdings or market list).
+const userDataWithBroker = await sdk.getMarketUserDataWithBroker(
+  chainId,
+  marketId,
+  userAddress,
+  brokerAddress,
+);
+// Or manually: pass fixedTermData into getMarketUserData
+const fixedTermData = brokerPositionsToUserFixedTermData(brokerPositions);
+const userData = await sdk.getMarketUserData(
+  chainId,
+  marketId,
+  userAddress,
+  fixedTermData,
+);
 ```
 
 ### API Data (with Filtering & Sorting)
@@ -316,22 +333,23 @@ const brokerRepaySteps = await sdk.buildBrokerRepayParams({
 
 ### Read Methods
 
-| Method                                            | Source | Description                |
-| ------------------------------------------------- | ------ | -------------------------- |
-| `getMarketExtraInfo(chainId, marketId)`           | Chain  | Market on-chain data       |
-| `getMarketUserData(chainId, marketId, user)`      | Chain  | User market position       |
-| `getWriteConfig(chainId, marketId)`               | Chain  | Config for write ops       |
-| `getVaultInfo(chainId, vaultAddress)`             | Chain  | Vault on-chain data        |
-| `getVaultUserData(chainId, vaultAddress, user)`   | Chain  | User vault position        |
-| `getSmartMarketExtraInfo(chainId, marketId)`      | Chain  | Smart market on-chain data |
-| `getSmartMarketUserData(chainId, marketId, user)` | Chain  | Smart market user position |
-| `getBrokerFixedTerms(chainId, broker)`            | Chain  | Broker fixed-term rates    |
-| `getBrokerUserPositions(chainId, broker, user)`   | Chain  | Broker user positions      |
-| `getMarketInfo(chainId, marketId)`                | API    | Market metadata            |
-| `getMarketList(params)`                           | API    | Market list with filters   |
-| `getVaultMetadata(address)`                       | API    | Vault metadata             |
-| `getVaultList(params)`                            | API    | Vault list with filters    |
-| `getMarketVaultDetails(marketId, params)`         | API    | Vaults for a market        |
+| Method                                                         | Source | Description                                           |
+| -------------------------------------------------------------- | ------ | ----------------------------------------------------- |
+| `getMarketExtraInfo(chainId, marketId)`                        | Chain  | Market on-chain data                                  |
+| `getMarketUserData(chainId, marketId, user)`                   | Chain  | User market position                                  |
+| `getMarketUserDataWithBroker(chainId, marketId, user, broker)` | Chain  | User market position (fixed-term: merged broker data) |
+| `getWriteConfig(chainId, marketId)`                            | Chain  | Config for write ops                                  |
+| `getVaultInfo(chainId, vaultAddress)`                          | Chain  | Vault on-chain data                                   |
+| `getVaultUserData(chainId, vaultAddress, user)`                | Chain  | User vault position                                   |
+| `getSmartMarketExtraInfo(chainId, marketId)`                   | Chain  | Smart market on-chain data                            |
+| `getSmartMarketUserData(chainId, marketId, user)`              | Chain  | Smart market user position                            |
+| `getBrokerFixedTerms(chainId, broker)`                         | Chain  | Broker fixed-term rates                               |
+| `getBrokerUserPositions(chainId, broker, user)`                | Chain  | Broker user positions                                 |
+| `getMarketInfo(chainId, marketId)`                             | API    | Market metadata                                       |
+| `getMarketList(params)`                                        | API    | Market list with filters                              |
+| `getVaultMetadata(address)`                                    | API    | Vault metadata                                        |
+| `getVaultList(params)`                                         | API    | Vault list with filters                               |
+| `getMarketVaultDetails(marketId, params)`                      | API    | Vaults for a market                                   |
 
 ### Build Methods
 

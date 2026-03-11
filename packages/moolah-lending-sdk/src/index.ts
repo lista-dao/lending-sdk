@@ -64,6 +64,7 @@ export {
   isUsdtLikeToken,
   getApiChain,
   LISTA_API_URLS,
+  brokerPositionsToUserFixedTermData,
 } from "@lista-dao/moolah-sdk-core";
 
 export const initMoolahSDK = (config: import("./types").MoolahSDKConfig) =>
