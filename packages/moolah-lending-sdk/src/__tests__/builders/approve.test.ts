@@ -82,22 +82,21 @@ describe("buildApproveSteps", () => {
     expect(steps[0].meta?.token).toBe(TEST_TOKEN);
   });
 
-  it("should reset USDT-like tokens before approving", async () => {
-    // USDT on BSC
-    const USDT_ADDRESS =
-      "0x55d398326f99059fF775485246999027B3197955" as Address;
+  it("should reset USDT-like tokens before approving (ethereum mainnet only)", async () => {
+    const ETH_USDT =
+      "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
     mockReadContract.mockResolvedValue(100n); // Has some existing allowance
 
     const steps = await buildApproveSteps(
       {
-        chainId: 56,
+        chainId: 1,
         owner: TEST_OWNER,
-        token: USDT_ADDRESS,
+        token: ETH_USDT,
         spender: TEST_SPENDER,
         amount: 1000n,
       },
       mockPublicClient,
-      "bsc",
+      "ethereum",
     );
 
     // Should have 2 steps: reset to 0, then approve
@@ -114,21 +113,43 @@ describe("buildApproveSteps", () => {
     expect(steps[1].meta?.reset).toBeUndefined();
   });
 
-  it("should not reset USDT if allowance is zero", async () => {
-    const USDT_ADDRESS =
+  it("should not reset BSC USDT (only ethereum USDT uses reset)", async () => {
+    const BSC_USDT =
       "0x55d398326f99059fF775485246999027B3197955" as Address;
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockResolvedValue(100n);
 
     const steps = await buildApproveSteps(
       {
         chainId: 56,
         owner: TEST_OWNER,
-        token: USDT_ADDRESS,
+        token: BSC_USDT,
         spender: TEST_SPENDER,
         amount: 1000n,
       },
       mockPublicClient,
       "bsc",
+    );
+
+    expect(steps).toHaveLength(1);
+    expect(steps[0].meta?.reset).toBeUndefined();
+    expect(steps[0].meta?.amount).toBe(1000n);
+  });
+
+  it("should not reset USDT if allowance is zero", async () => {
+    const ETH_USDT =
+      "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
+    mockReadContract.mockResolvedValue(0n);
+
+    const steps = await buildApproveSteps(
+      {
+        chainId: 1,
+        owner: TEST_OWNER,
+        token: ETH_USDT,
+        spender: TEST_SPENDER,
+        amount: 1000n,
+      },
+      mockPublicClient,
+      "ethereum",
     );
 
     expect(steps).toHaveLength(1);

@@ -11,6 +11,7 @@ export * from "./types/loan.js";
 export * from "./types/api.js";
 export * from "./types/smart.js";
 export * from "./types/broker.js";
+export { brokerPositionsToUserFixedTermData } from "./brokerToUserFixedTermData.js";
 export * from "./types/operations.js";
 
 export * from "./contracts/types.js";

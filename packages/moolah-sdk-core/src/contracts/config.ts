@@ -2,18 +2,16 @@ import type { Address } from "viem";
 import type { NetworkName, NetworkContracts } from "./types.js";
 
 /**
- * USDT addresses that require special approve handling (reset to 0 first)
+ * USDT addresses that require special approve handling (reset to 0 first).
+ * Only Ethereum mainnet USDT uses the non-standard approve behavior.
  */
 export const USDT_ADDRESSES: Record<string, Address> = {
   ethereum: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  bsc: "0x55d398326f99059fF775485246999027B3197955",
 };
 
 /**
- * Check if a token requires USDT-style approve (reset to 0 first)
- * @param network - Network name
- * @param tokenAddress - Token address to check
- * @returns true if token requires reset-then-approve pattern
+ * Check if a token requires USDT-style approve (reset to 0 first).
+ * Only Ethereum mainnet USDT needs this; BSC USDT does not.
  */
 export function isUsdtLikeToken(
   network: NetworkName,

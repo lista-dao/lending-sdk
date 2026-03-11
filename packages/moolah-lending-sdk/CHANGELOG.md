@@ -1,5 +1,13 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.6
+
+### Patch Changes
+
+- Enhance Moolah SDK with new method to retrieve market user data with broker information. Introduce `getMarketUserDataWithBroker` for fixed-term markets, allowing integration of broker positions into user data. Update README to reflect new API method and improve documentation on USDT handling in approval steps. Add tests to validate new functionality and ensure correct behavior across Ethereum and BSC networks.
+- Updated dependencies
+  - @lista-dao/moolah-sdk-core@1.0.7
+
 ## 1.0.5
 
 ### Patch Changes

@@ -10,6 +10,7 @@ import {
   simulateMarketBorrow,
   simulateMarketRepay,
   toWriteConfig,
+  brokerPositionsToUserFixedTermData,
 } from "@lista-dao/moolah-sdk-core";
 import type {
   MarketExtraInfo,
@@ -114,7 +115,9 @@ const CHAIN_BY_NETWORK: Record<NetworkName, Chain> = {
 
 const EMPTY_TRANSPORT_CONFIG: SdkTransportConfig = {};
 
-function toMarketSimulationState(extraInfo: MarketExtraInfo): SimulateMarketState {
+function toMarketSimulationState(
+  extraInfo: MarketExtraInfo,
+): SimulateMarketState {
   return {
     totalSupply: extraInfo.totalSupply,
     totalBorrow: extraInfo.totalBorrow,
@@ -137,7 +140,9 @@ export class MoolahSDK {
     const apiBaseUrl = config.apiBaseUrl ?? LISTA_API_URLS.prod;
     this.apiClient = new MoolahApiClient({ baseUrl: apiBaseUrl });
 
-    for (const [chainId, client] of Object.entries(config.publicClients ?? {})) {
+    for (const [chainId, client] of Object.entries(
+      config.publicClients ?? {},
+    )) {
       this.publicClients.set(chainId, client);
     }
   }
@@ -262,6 +267,32 @@ export class MoolahSDK {
       userAddress,
       extraInfo,
       fixedTermData,
+    );
+  }
+
+  async getMarketUserDataWithBroker(
+    chainId: ChainId,
+    marketId: Address,
+    userAddress: Address,
+    brokerAddress: Address,
+    options?: { loanDecimals?: number; marketExtraInfo?: MarketExtraInfo },
+  ): Promise<MarketUserData> {
+    const [brokerPositions, extraInfo] = await Promise.all([
+      this.getBrokerUserPositions(
+        chainId,
+        brokerAddress,
+        userAddress,
+        options?.loanDecimals,
+      ),
+      options?.marketExtraInfo ?? this.getMarketExtraInfo(chainId, marketId),
+    ]);
+    const fixedTermData = brokerPositionsToUserFixedTermData(brokerPositions);
+    return this.getMarketUserData(
+      chainId,
+      marketId,
+      userAddress,
+      fixedTermData,
+      extraInfo,
     );
   }
 
