@@ -1,5 +1,13 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.7
+
+### Patch Changes
+
+- Fix rounding of dynamic outstanding amount in getBrokerUserPositions function to ensure accurate loan calculations by using roundDown method with specified loan decimals.
+- Updated dependencies
+  - @lista-dao/moolah-sdk-core@1.0.8
+
 ## 1.0.6
 
 ### Patch Changes
