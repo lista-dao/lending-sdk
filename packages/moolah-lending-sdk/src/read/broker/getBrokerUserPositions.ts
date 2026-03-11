@@ -89,7 +89,7 @@ export async function getBrokerUserPositions(
       },
       loanDecimals,
     );
-    dynamicOutstanding = totalRepay;
+    dynamicOutstanding = totalRepay.roundDown(loanDecimals);
   }
 
   // Calculate fixed positions data
