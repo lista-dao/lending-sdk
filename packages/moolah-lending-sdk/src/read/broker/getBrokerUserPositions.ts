@@ -3,6 +3,7 @@ import {
   Decimal,
   LENDING_BROKER_ABI,
   BROKER_RATE_CALCULATOR_ABI,
+  calculateDynamicLoanRepayment,
   calculateFixedLoanRepayment,
   type BrokerUserPositionsData,
   type FixedLoanPosition,
@@ -10,15 +11,74 @@ import {
   type RawFixedTerm,
 } from "@lista-dao/moolah-sdk-core";
 
+const ONE_E27 = 10n ** 27n;
 const SECONDS_PER_WEEK = 604800n;
+const RATE_SCALE_18 = 10n ** 18n;
+const FLEXIBLE_RATE_NUMERATOR = 100n;
+const FLEXIBLE_RATE_DENOMINATOR = 95n;
 
 /**
  * Normalize APR rate from contract format
  * Contract stores APR as (1 + rate) * 1e27, we convert to rate * 1e27
  */
 function normalizeAprRate(apr: bigint): bigint {
-  const ONE_E27 = 10n ** 27n;
   return apr > ONE_E27 ? apr - ONE_E27 : apr;
+}
+
+/**
+ * Convert broker dynamic rate (27 decimals) to WAD (18 decimals)
+ * expected by calculateDynamicLoanRepayment.
+ */
+function normalizeDynamicRateToWad(dynamicRate: bigint): bigint {
+  return dynamicRate / RATE_SCALE_18;
+}
+
+function buildTermRateData(terms: readonly RawFixedTerm[]) {
+  const termRateByDuration = new Map<string, Decimal>();
+  let currentFlexibleRate = Decimal.ZERO;
+
+  for (const term of terms) {
+    const normalizedRate = normalizeAprRate(term.apr);
+
+    if (term.duration === SECONDS_PER_WEEK) {
+      currentFlexibleRate = new Decimal(
+        (normalizedRate * FLEXIBLE_RATE_NUMERATOR) / FLEXIBLE_RATE_DENOMINATOR,
+        27,
+      );
+    }
+
+    termRateByDuration.set(
+      term.duration.toString(),
+      new Decimal(normalizedRate, 27),
+    );
+  }
+
+  return { termRateByDuration, currentFlexibleRate };
+}
+
+function calculateDynamicOutstanding(
+  dynamicPosition: DynamicLoanPosition,
+  dynamicRate: bigint,
+  loanDecimals: number,
+): Decimal | null {
+  if (dynamicPosition.principal <= 0n) {
+    return null;
+  }
+
+  const { totalRepay } = calculateDynamicLoanRepayment(
+    {
+      principal: dynamicPosition.principal,
+      normalizedDebt: dynamicPosition.normalizedDebt,
+      rate: normalizeDynamicRateToWad(dynamicRate),
+    },
+    loanDecimals,
+  );
+
+  return totalRepay.roundDown(loanDecimals);
+}
+
+function getPositionDuration(position: FixedLoanPosition): bigint {
+  return position.end > position.start ? position.end - position.start : 0n;
 }
 
 /**
@@ -60,34 +120,12 @@ export async function getBrokerUserPositions(
       }) as Promise<bigint>,
     ]);
 
-  // Build term rate map
-  const termRateByDuration = new Map<string, Decimal>();
-  let currentFlexibleRate = Decimal.ZERO;
-
-  terms.forEach((term) => {
-    if (term.duration === SECONDS_PER_WEEK) {
-      // Flexible rate = term rate * 100 / 95
-      currentFlexibleRate = new Decimal(
-        (normalizeAprRate(term.apr) * 100n) / 95n,
-        27,
-      );
-    }
-    const normalizedRate = new Decimal(normalizeAprRate(term.apr), 27);
-    termRateByDuration.set(term.duration.toString(), normalizedRate);
-  });
-
-  // Calculate dynamic position data
-  let dynamicOutstanding: Decimal | null = null;
-
-  if (dynamicPosition?.principal && dynamicPosition.principal > 0n) {
-    const normalizedDebt = new Decimal(
-      dynamicPosition.normalizedDebt ?? dynamicPosition.principal,
-      loanDecimals,
-    );
-    dynamicOutstanding = normalizedDebt
-      .mul(new Decimal(dynamicRate, 27))
-      .roundDown(loanDecimals);
-  }
+  const { termRateByDuration, currentFlexibleRate } = buildTermRateData(terms);
+  const dynamicOutstanding = calculateDynamicOutstanding(
+    dynamicPosition,
+    dynamicRate,
+    loanDecimals,
+  );
 
   // Calculate fixed positions data
   let fixedOutstanding = Decimal.ZERO;
@@ -98,23 +136,18 @@ export async function getBrokerUserPositions(
   // Add dynamic position to totals
   if (dynamicOutstanding && dynamicOutstanding.gt(Decimal.ZERO)) {
     totalOutstanding = totalOutstanding.add(dynamicOutstanding);
-    weightedSum = weightedSum.add(
-      dynamicOutstanding.mul(currentFlexibleRate ?? Decimal.ZERO),
-    );
+    weightedSum = weightedSum.add(dynamicOutstanding.mul(currentFlexibleRate));
   }
 
   // Process fixed positions
   const currentTimestamp = Math.floor(Date.now() / 1000);
-  fixedPositions.forEach((position) => {
-    const principal = BigInt(position.principal ?? 0n);
-    const principalRepaid = BigInt(position.principalRepaid ?? 0n);
-
+  for (const position of fixedPositions) {
     // Skip fully repaid or matured positions
-    if (principal <= principalRepaid) {
-      return;
+    if (position.principal <= position.principalRepaid) {
+      continue;
     }
-    if (Number(position.end ?? 0n) <= currentTimestamp) {
-      return;
+    if (Number(position.end) <= currentTimestamp) {
+      continue;
     }
 
     const {
@@ -130,18 +163,13 @@ export async function getBrokerUserPositions(
     fixedOutstanding = fixedOutstanding.add(totalRepayNoPenalty);
     totalPenalty = totalPenalty.add(new Decimal(penalty, loanDecimals));
 
-    const duration =
-      BigInt(position.end ?? 0n) > BigInt(position.start ?? 0n)
-        ? BigInt(position.end ?? 0n) - BigInt(position.start ?? 0n)
-        : 0n;
-
     const normalizedFixedRate =
-      termRateByDuration.get(duration.toString()) ??
+      termRateByDuration.get(getPositionDuration(position).toString()) ??
       new Decimal(normalizeAprRate(position.apr), 27);
 
     totalOutstanding = totalOutstanding.add(totalRepayNoPenalty);
     weightedSum = weightedSum.add(totalRepayNoPenalty.mul(normalizedFixedRate));
-  });
+  }
 
   // Calculate weighted borrow rate
   const weightedBorrowRate = totalOutstanding.gt(Decimal.ZERO)

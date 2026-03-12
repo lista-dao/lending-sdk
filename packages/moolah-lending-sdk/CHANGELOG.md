@@ -1,5 +1,11 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.9
+
+### Patch Changes
+
+- Refactor getBrokerUserPositions to utilize calculateDynamicLoanRepayment for dynamic outstanding calculations, improving accuracy by converting rates to WAD format. Introduce helper functions for rate normalization and outstanding calculation, enhancing code clarity and maintainability.
+
 ## 1.0.8
 
 ### Patch Changes
