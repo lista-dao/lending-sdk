@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Address, PublicClient } from "viem";
+import { calculateDynamicLoanRepayment } from "@lista-dao/moolah-sdk-core";
 
 import { getBrokerUserPositions } from "../../../read/broker/getBrokerUserPositions.js";
 
@@ -12,18 +13,26 @@ const BROKER = "0x1111111111111111111111111111111111111111" as Address;
 const RATE_CALCULATOR =
   "0x2222222222222222222222222222222222222222" as Address;
 const USER = "0x3333333333333333333333333333333333333333" as Address;
-const RAY = 10n ** 27n;
+const WAD = 10n ** 18n;
 
 describe("getBrokerUserPositions - dynamic debt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("computes dynamic outstanding with normalizedDebt * rate / 1e27", async () => {
+  it("computes dynamic outstanding with legacy decimal-normalized dynamic rate", async () => {
     const principal = 17061806491632102441n;
     const normalizedDebt = 16878807815476167930n;
     const rate = 1011624315990879851775155575n;
-    const expectedOutstanding = (normalizedDebt * rate) / RAY;
+    const { totalRepay } = calculateDynamicLoanRepayment(
+      {
+        principal,
+        normalizedDebt,
+        rate: rate / WAD,
+      },
+      18,
+    );
+    const expectedOutstanding = totalRepay.roundDown(18).numerator;
 
     mockReadContract.mockImplementation(async ({ functionName }) => {
       switch (functionName) {
