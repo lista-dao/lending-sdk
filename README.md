@@ -298,6 +298,8 @@ console.log(`Remaining: ${remaining.toFormat(2)}`);
 | `getMarketInfo(chainId, marketId)`                | API    | Market metadata                         |
 | `getMarketExtraInfo(chainId, marketId)`           | Chain  | Market on-chain data (rates, liquidity) |
 | `getMarketUserData(chainId, marketId, user)`      | Chain  | User position data                      |
+| `getMarketUserDataWithBroker(chainId, marketId, user, broker)` | Chain  | User position data with broker fixed-term merged |
+| `getMarketRuntimeData(chainId, marketId, wallet)` | Chain  | Combined write + user runtime data      |
 | `getWriteConfig(chainId, marketId)`               | Chain  | Config for write operations             |
 | `getMarketList(params)`                           | API    | Market discovery                        |
 | `getVaultInfo(chainId, address)`                  | Chain  | Vault on-chain data                     |
@@ -308,6 +310,8 @@ console.log(`Remaining: ${remaining.toFormat(2)}`);
 | `getSmartMarketUserData(chainId, marketId, user)` | Chain  | Smart market user position              |
 | `getBrokerFixedTerms(chainId, brokerAddress)`     | Chain  | Fixed-term broker terms                 |
 | `getBrokerUserPositions(chainId, broker, user)`   | Chain  | Broker user positions                   |
+| `getHoldings(params)`                             | API    | User holdings (`vault` / `market`)      |
+| `getMarketVaultDetails(marketId, params)`         | API    | Vault list under a market               |
 
 ### MoolahSDK Build Methods
 
@@ -323,9 +327,17 @@ console.log(`Remaining: ${remaining.toFormat(2)}`);
 | `buildSmartSupplyCollateralParams(params)`   | Build smart market collateral supply steps |
 | `buildSmartWithdrawDexLpParams(params)`      | Build smart market LP withdraw steps       |
 | `buildSmartWithdrawCollateralParams(params)` | Build smart market collateral withdraw     |
+| `buildSmartWithdrawCollateralFixedParams(params)` | Build smart market collateral withdraw (fixed LP burn) |
 | `buildSmartRepayParams(params)`              | Build smart market repay steps             |
 | `buildBrokerBorrowParams(params)`            | Build broker borrow steps                  |
 | `buildBrokerRepayParams(params)`             | Build broker repay steps                   |
+
+### MoolahSDK Simulate Methods
+
+| Method                                | Description                                  |
+| ------------------------------------- | -------------------------------------------- |
+| `simulateBorrowPosition(params)`      | Simulate borrow position using live chain data |
+| `simulateRepayPosition(params)`       | Simulate repay position using live chain data |
 
 ### Simulate Functions (Decimal-based)
 

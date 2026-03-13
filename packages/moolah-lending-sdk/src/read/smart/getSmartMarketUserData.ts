@@ -63,14 +63,17 @@ export async function getSmartMarketUserData(
   };
 
   // Get user balances
-  const getErc20Balance = async (tokenAddress: Address): Promise<Decimal> => {
+  const getErc20Balance = async (
+    tokenAddress: Address,
+    decimals: number,
+  ): Promise<Decimal> => {
     const balance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "balanceOf",
       args: [userAddress],
     });
-    return new Decimal(balance);
+    return new Decimal(balance, decimals);
   };
 
   const getNativeBalance = async (): Promise<Decimal> => {
@@ -80,10 +83,16 @@ export async function getSmartMarketUserData(
 
   const [lpBalance, loanBalance, tokenABalance, tokenBBalance] =
     await Promise.all([
-      getErc20Balance(lpInfo.address),
-      loanIsNative ? getNativeBalance() : getErc20Balance(loanInfo.address),
-      tokenAIsNative ? getNativeBalance() : getErc20Balance(tokenAInfo.address),
-      tokenBIsNative ? getNativeBalance() : getErc20Balance(tokenBInfo.address),
+      getErc20Balance(lpInfo.address, lpInfo.decimals),
+      loanIsNative
+        ? getNativeBalance()
+        : getErc20Balance(loanInfo.address, loanInfo.decimals),
+      tokenAIsNative
+        ? getNativeBalance()
+        : getErc20Balance(tokenAInfo.address, tokenAInfo.decimals),
+      tokenBIsNative
+        ? getNativeBalance()
+        : getErc20Balance(tokenBInfo.address, tokenBInfo.decimals),
     ]);
 
   const balances = {

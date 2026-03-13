@@ -1,5 +1,13 @@
 # @lista-dao/moolah-lending-sdk
 
+## 1.0.10
+
+### Patch Changes
+
+- Enhance Moolah SDK by adding new methods for retrieving user holdings and market runtime data.
+- Updated dependencies
+  - @lista-dao/moolah-sdk-core@1.0.10
+
 ## 1.0.9
 
 ### Patch Changes

@@ -338,6 +338,7 @@ const brokerRepaySteps = await sdk.buildBrokerRepayParams({
 | `getMarketExtraInfo(chainId, marketId)`                        | Chain  | Market on-chain data                                  |
 | `getMarketUserData(chainId, marketId, user)`                   | Chain  | User market position                                  |
 | `getMarketUserDataWithBroker(chainId, marketId, user, broker)` | Chain  | User market position (fixed-term: merged broker data) |
+| `getMarketRuntimeData(chainId, marketId, wallet)`              | Chain  | Combined write + user runtime data                    |
 | `getWriteConfig(chainId, marketId)`                            | Chain  | Config for write ops                                  |
 | `getVaultInfo(chainId, vaultAddress)`                          | Chain  | Vault on-chain data                                   |
 | `getVaultUserData(chainId, vaultAddress, user)`                | Chain  | User vault position                                   |
@@ -349,6 +350,7 @@ const brokerRepaySteps = await sdk.buildBrokerRepayParams({
 | `getMarketList(params)`                                        | API    | Market list with filters                              |
 | `getVaultMetadata(address)`                                    | API    | Vault metadata                                        |
 | `getVaultList(params)`                                         | API    | Vault list with filters                               |
+| `getHoldings(params)`                                          | API    | User holdings (`vault` / `market`)                    |
 | `getMarketVaultDetails(marketId, params)`                      | API    | Vaults for a market                                   |
 
 ### Build Methods
@@ -369,6 +371,13 @@ const brokerRepaySteps = await sdk.buildBrokerRepayParams({
 | `buildSmartRepayParams(params)`                   | Build smart market repay steps             |
 | `buildBrokerBorrowParams(params)`                 | Build broker borrow steps                  |
 | `buildBrokerRepayParams(params)`                  | Build broker repay steps                   |
+
+### Simulate Methods
+
+| Method                           | Description                                  |
+| -------------------------------- | -------------------------------------------- |
+| `simulateBorrowPosition(params)` | Simulate borrow position using live chain data |
+| `simulateRepayPosition(params)`  | Simulate repay position using live chain data |
 
 ## License
 
