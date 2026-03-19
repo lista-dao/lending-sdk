@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.11
+
+### Patch Changes
+
+- Refactor loan repayment calculations in Moolah SDK to use cumulative borrow index in RAY format (27 decimals) instead of WAD format (18 decimals). Update related tests and documentation to reflect changes, ensuring improved accuracy in dynamic loan repayment computations.
+
 ## 1.0.10
 
 ### Patch Changes

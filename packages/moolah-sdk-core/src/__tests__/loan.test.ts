@@ -72,10 +72,14 @@ describe("getCurrentRoundedTimestamp", () => {
 });
 
 describe("calculateDynamicLoanRepayment", () => {
+  // Rate is now a cumulative borrow index in RAY format (27 decimals)
+  // 1e27 = index of 1.0 (no interest), 1.05e27 = 5% interest accumulated
+  const RATE_INDEX_5_PERCENT = RATE_SCALE_27 + (RATE_SCALE_27 * 5n) / 100n; // 1.05e27
+
   it("should calculate repayment for dynamic loan", () => {
     const result = calculateDynamicLoanRepayment({
       principal: 1000n * DECIMAL_SCALE,
-      rate: 158548959n, // ~5% APY per second rate
+      rate: RATE_INDEX_5_PERCENT, // 5% accumulated interest (borrow index = 1.05)
     });
 
     expect(result.principal.numerator).toBe(1000n * DECIMAL_SCALE);
@@ -87,19 +91,19 @@ describe("calculateDynamicLoanRepayment", () => {
     const result = calculateDynamicLoanRepayment({
       principal: 1000n * DECIMAL_SCALE,
       normalizedDebt: 1100n * DECIMAL_SCALE, // With accrued interest
-      rate: 158548959n,
+      rate: RATE_INDEX_5_PERCENT,
     });
 
     expect(result.principal.numerator).toBe(1100n * DECIMAL_SCALE);
   });
 
-  it("should handle zero rate", () => {
+  it("should handle zero rate (index = 1.0)", () => {
     const result = calculateDynamicLoanRepayment({
       principal: 1000n * DECIMAL_SCALE,
-      rate: 0n,
+      rate: RATE_SCALE_27, // Index = 1.0, no interest accumulated
     });
 
-    // With zero rate, total should equal principal (plus minimal 10-min buffer)
+    // With index = 1.0, total should equal principal (no interest, no buffer)
     expect(result.totalRepay.valueOf()).toBeCloseTo(1000, 0);
   });
 
@@ -107,7 +111,7 @@ describe("calculateDynamicLoanRepayment", () => {
     const result6 = calculateDynamicLoanRepayment(
       {
         principal: 1000n * 10n ** 6n,
-        rate: 158548959n,
+        rate: RATE_INDEX_5_PERCENT,
       },
       6,
     );
@@ -115,7 +119,7 @@ describe("calculateDynamicLoanRepayment", () => {
     const result18 = calculateDynamicLoanRepayment(
       {
         principal: 1000n * DECIMAL_SCALE,
-        rate: 158548959n,
+        rate: RATE_INDEX_5_PERCENT,
       },
       18,
     );

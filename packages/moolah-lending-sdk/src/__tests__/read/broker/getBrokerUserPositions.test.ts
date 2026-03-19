@@ -13,22 +13,21 @@ const BROKER = "0x1111111111111111111111111111111111111111" as Address;
 const RATE_CALCULATOR =
   "0x2222222222222222222222222222222222222222" as Address;
 const USER = "0x3333333333333333333333333333333333333333" as Address;
-const WAD = 10n ** 18n;
 
 describe("getBrokerUserPositions - dynamic debt", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("computes dynamic outstanding with legacy decimal-normalized dynamic rate", async () => {
+  it("computes dynamic outstanding with cumulative borrow index rate", async () => {
     const principal = 17061806491632102441n;
     const normalizedDebt = 16878807815476167930n;
-    const rate = 1011624315990879851775155575n;
+    const rate = 1011624315990879851775155575n; // Cumulative borrow index in RAY format (27 decimals)
     const { totalRepay } = calculateDynamicLoanRepayment(
       {
         principal,
         normalizedDebt,
-        rate: rate / WAD,
+        rate, // Rate is passed directly in RAY format
       },
       18,
     );
