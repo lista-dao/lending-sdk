@@ -13,7 +13,6 @@ import {
 
 const ONE_E27 = 10n ** 27n;
 const SECONDS_PER_WEEK = 604800n;
-const RATE_SCALE_18 = 10n ** 18n;
 const FLEXIBLE_RATE_NUMERATOR = 100n;
 const FLEXIBLE_RATE_DENOMINATOR = 95n;
 
@@ -23,14 +22,6 @@ const FLEXIBLE_RATE_DENOMINATOR = 95n;
  */
 function normalizeAprRate(apr: bigint): bigint {
   return apr > ONE_E27 ? apr - ONE_E27 : apr;
-}
-
-/**
- * Convert broker dynamic rate (27 decimals) to WAD (18 decimals)
- * expected by calculateDynamicLoanRepayment.
- */
-function normalizeDynamicRateToWad(dynamicRate: bigint): bigint {
-  return dynamicRate / RATE_SCALE_18;
 }
 
 function buildTermRateData(terms: readonly RawFixedTerm[]) {
@@ -69,7 +60,7 @@ function calculateDynamicOutstanding(
     {
       principal: dynamicPosition.principal,
       normalizedDebt: dynamicPosition.normalizedDebt,
-      rate: normalizeDynamicRateToWad(dynamicRate),
+      rate: dynamicRate, // Rate is cumulative borrow index in RAY format (27 decimals)
     },
     loanDecimals,
   );

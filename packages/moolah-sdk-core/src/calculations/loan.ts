@@ -1,5 +1,4 @@
 import { Decimal } from "../utils/decimal.js";
-import { MathLib } from "@morpho-org/blue-sdk";
 
 import type {
   DynamicLoanPosition,
@@ -45,7 +44,7 @@ export function getCurrentRoundedTimestamp(bufferMinutes = 10): bigint {
  * @param position - The dynamic loan position data
  * @param position.principal - Principal amount borrowed
  * @param position.normalizedDebt - Normalized debt amount (optional, defaults to principal)
- * @param position.rate - Current interest rate per second
+ * @param position.rate - Cumulative borrow index in RAY format (27 decimals)
  * @param loanDecimals - The decimals of the loan token (default: 18)
  * @returns Object containing total repay amount and breakdown of principal and interest
  */
@@ -58,32 +57,33 @@ export function calculateDynamicLoanRepayment(
     loanDecimals,
   );
 
-  // position.rate is already a per-second rate in 18 decimals
-  const rawRate = MathLib.wTaylorCompounded(position.rate, ONE_YEAR_SECONDS);
-  const rateDecimal = new Decimal(rawRate, 18);
+  // rate is the cumulative borrow index in RAY format (27 decimals)
+  const rateIndex = new Decimal(position.rate, 27);
 
-  // Total outstanding = normalized debt × (1 + rate)
-  const currentTotalRepay = normalizedDebt.mul(rateDecimal.add(Decimal.ONE));
+  // Current debt = normalized debt × rate index
+  const currentDebt = normalizedDebt.mul(rateIndex);
 
+  // Principal is the normalized debt
   const principal = normalizedDebt;
-  const tenMinutesRawRate = MathLib.wTaylorCompounded(
-    position.rate,
-    TEN_MINUTES_SECONDS,
-  );
-  const tenMinutesRateDecimal = new Decimal(tenMinutesRawRate, 18);
 
-  const tenMinutesInterest = principal.mul(tenMinutesRateDecimal.toString(18));
+  // Interest = current debt - principal
+  const currentInterest = currentDebt.sub(principal);
 
-  // add additional 10 minutes interest to the current total repay
-  const totalRepay = currentTotalRepay.add(tenMinutesInterest);
+  // Buffer = 10% of current interest
+  const bufferRate = new Decimal(10n ** 17n, 18); // 0.1 in 18 decimals
+  const buffer = currentInterest.mul(bufferRate);
 
-  const interest = totalRepay.sub(normalizedDebt);
+  // Total repay = current debt + buffer
+  const totalRepay = currentDebt.add(buffer);
+
+  // Total interest including buffer
+  const interest = totalRepay.sub(principal);
 
   return {
     totalRepay,
-    principal: normalizedDebt,
+    principal,
     interest,
-    rate: rateDecimal,
+    rate: rateIndex,
   };
 }
 
