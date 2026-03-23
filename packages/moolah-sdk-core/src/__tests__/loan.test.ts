@@ -87,14 +87,17 @@ describe("calculateDynamicLoanRepayment", () => {
     expect(result.interest.valueOf()).toBeGreaterThan(0);
   });
 
-  it("should use normalizedDebt if provided", () => {
+  it("should use normalizedDebt for debt calculation but return original principal", () => {
     const result = calculateDynamicLoanRepayment({
       principal: 1000n * DECIMAL_SCALE,
-      normalizedDebt: 1100n * DECIMAL_SCALE, // With accrued interest
+      normalizedDebt: 1100n * DECIMAL_SCALE, // Normalized debt used for debt calculation
       rate: RATE_INDEX_5_PERCENT,
     });
 
-    expect(result.principal.numerator).toBe(1100n * DECIMAL_SCALE);
+    // principal in result is always the original principal
+    expect(result.principal.numerator).toBe(1000n * DECIMAL_SCALE);
+    // totalRepay should be higher because normalizedDebt (1100) is used for calculation
+    expect(result.totalRepay.valueOf()).toBeGreaterThan(1100);
   });
 
   it("should handle zero rate (index = 1.0)", () => {

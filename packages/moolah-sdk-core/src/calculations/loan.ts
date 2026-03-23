@@ -56,34 +56,30 @@ export function calculateDynamicLoanRepayment(
     position.normalizedDebt ?? position.principal,
     loanDecimals,
   );
+  const principal = new Decimal(position.principal, loanDecimals);
 
   // rate is the cumulative borrow index in RAY format (27 decimals)
+  // actualDebt = normalizedDebt × (rate / RATE_SCALE_27)
   const rateIndex = new Decimal(position.rate, 27);
-
-  // Current debt = normalized debt × rate index
   const currentDebt = normalizedDebt.mul(rateIndex);
 
-  // Principal is the normalized debt
-  const principal = normalizedDebt;
-
-  // Interest = current debt - principal
+  // Calculate interest = currentDebt - original principal
   const currentInterest = currentDebt.sub(principal);
 
-  // Buffer = 10% of current interest
-  const bufferRate = new Decimal(10n ** 17n, 18); // 0.1 in 18 decimals
-  const buffer = currentInterest.mul(bufferRate);
-
-  // Total repay = current debt + buffer
+  // Add 10% of interest as buffer (excess is refunded)
+  const BUFFER_RATE = new Decimal(1n, 1); // 0.1 = 10%
+  const buffer = currentInterest.mul(BUFFER_RATE);
   const totalRepay = currentDebt.add(buffer);
-
-  // Total interest including buffer
   const interest = totalRepay.sub(principal);
+
+  // Accumulated rate = rateIndex - 1
+  const accumulatedRate = rateIndex.sub(Decimal.ONE);
 
   return {
     totalRepay,
     principal,
     interest,
-    rate: rateIndex,
+    rate: accumulatedRate,
   };
 }
 
