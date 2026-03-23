@@ -1,5 +1,11 @@
 # @lista-dao/moolah-sdk-core
 
+## 1.0.12
+
+### Patch Changes
+
+- Refactor loan repayment logic in Moolah SDK to clarify the use of normalizedDebt for debt calculations while ensuring the original principal is returned. Update tests to reflect these changes and improve accuracy in repayment computations.
+
 ## 1.0.11
 
 ### Patch Changes
