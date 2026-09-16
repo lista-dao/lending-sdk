@@ -17,13 +17,24 @@
     "version": "changeset version",
     "release": "changeset version && pnpm build && pnpm -r --filter './packages/*' exec pnpm publish --access public --no-git-checks",
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
-    "format:check": "prettier --check \"packages/*/src/**/*.ts\""
+    "format:check": "prettier --check \"packages/*/src/**/*.ts\"",
+    "abi:conformance": "node scripts/abi-conformance.mjs",
+    "lint:fix": "pnpm -r --filter './packages/*' run lint:fix",
+    "fork:check": "node scripts/fork-check.mjs",
+    "fork:flows": "node scripts/fork-flows.mjs",
+    "check:packaging": "node scripts/check-packaging.mjs",
+    "check:consumer": "node scripts/check-consumer.mjs",
+    "parity:check": "node scripts/parity-check.mjs",
+    "read:surface": "node scripts/read-surface.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
     "prettier": "^3.2.5",
     "rimraf": "^5.0.5",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "viem": "^2.22.10",
+    "@lista-dao/moolah-sdk-core": "workspace:*",
+    "@lista-dao/moolah-lending-sdk": "workspace:*"
   },
   "engines": {
     "node": ">=16",

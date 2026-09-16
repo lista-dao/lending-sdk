@@ -5,7 +5,7 @@ import {
   type FixedTermAndRate,
 } from "@lista-dao/moolah-sdk-core";
 
-const SECONDS_PER_DAY = 86400n;
+const SECONDS_PER_DAY = 86_400;
 
 /**
  * Get broker fixed terms
@@ -23,7 +23,9 @@ export async function getBrokerFixedTerms(
 
   return terms.map((term) => ({
     termId: term.termId,
-    duration: Number(term.duration / SECONDS_PER_DAY),
+    durationSeconds: term.duration,
+    // Fractional on purpose: short terms should not be rounded down to zero days.
+    durationDays: Number(term.duration) / SECONDS_PER_DAY,
     apr: (() => {
       const value = new Decimal(term.apr, 27);
       return value.gt(Decimal.ONE) ? value.sub(Decimal.ONE) : value;

@@ -16,8 +16,28 @@ vi.mock("viem", async () => {
   const actual = await vi.importActual("viem");
   return {
     ...actual,
+    // A broker repay verifies the broker against Moolah before approving to
+    // it, so a blanket 0n for every read is no longer a usable stand-in.
     createPublicClient: vi.fn(() => ({
-      readContract: vi.fn().mockResolvedValue(0n),
+      readContract: vi.fn(
+        async ({ functionName }: { functionName: string }) => {
+          if (functionName === "MARKET_ID") {
+            return "0x058073a21fea8dd3aa250713a56ad7526cc27c8f74e85f5433821c6fe5d03e1b";
+          }
+          if (functionName === "MOOLAH") {
+            return "0x8F73b65B4caAf64FBA2aF91cC5D4a2A1318E5D8C";
+          }
+          if (functionName === "brokers") {
+            return "0xdddddddddddddddddddddddddddddddddddddddd";
+          }
+          // The builders resolve the provider from the chain now, so a blanket
+          // 0n would hand back a number where an address belongs.
+          if (functionName === "providers" || functionName === "provider") {
+            return "0x0000000000000000000000000000000000000000";
+          }
+          return 0n;
+        },
+      ),
     })),
   };
 });
@@ -641,16 +661,52 @@ describe("MoolahSDK", () => {
       expect(result[0].params.chainId).toBe("56");
     });
 
-    it("should throw for missing RPC URL", async () => {
-      const sdkNoRpc = new MoolahSDK({ rpcUrls: {} });
+    it("refuses a config that can serve no chain at all", () => {
+      // `rpcUrls` and `publicClients` are each optional and one is required.
+      // This used to construct fine and fail several calls later, on the first
+      // read, a long way from the mistake.
+      expect(() => new MoolahSDK({ rpcUrls: {} })).toThrow(
+        /give it somewhere to read from/,
+      );
+      expect(() => new MoolahSDK({})).toThrow(/give it somewhere to read from/);
+      expect(() => new MoolahSDK({ publicClients: {} })).toThrow(
+        /give it somewhere to read from/,
+      );
+    });
+
+    it("names both remedies when a chain has neither client nor URL", async () => {
+      const partial = new MoolahSDK({
+        rpcUrls: { 1: "https://example.invalid" },
+      });
       await expect(
-        sdkNoRpc.buildBorrowParams({
+        partial.buildBorrowParams({
           chainId: 56,
           marketId: MARKET_ID,
           assets: 500n,
           walletAddress: WALLET,
         }),
-      ).rejects.toThrow("RPC URL not configured for chainId 56");
+      ).rejects.toThrow(/No RPC configured for chainId 56.*publicClients/s);
+    });
+
+    it("accepts publicClients alone, with no rpcUrls at all", async () => {
+      // The bring-your-own-client path. `rpcUrls` being required made this
+      // shape uncompilable, so callers wrote `rpcUrls: {}` — which then hid a
+      // missing chain until it was called.
+      // Whatever the mocked `createPublicClient` hands back is a fine stand-in
+      // for a caller's own client — the point is that the SDK uses it and
+      // never looks for an RPC URL.
+      const byob = new MoolahSDK({
+        publicClients: {
+          56: createPublicClient({} as never) as unknown as PublicClient,
+        },
+      });
+      const steps = await byob.buildBorrowParams({
+        chainId: 56,
+        marketId: MARKET_ID,
+        assets: 500n,
+        walletAddress: WALLET,
+      });
+      expect(steps.length).toBeGreaterThan(0);
     });
   });
 

@@ -1,5 +1,4 @@
 import type { Address, PublicClient } from "viem";
-import { zeroAddress } from "viem";
 import {
   Decimal,
   MOOLAH_ABI,
@@ -16,6 +15,8 @@ import {
   type SmartMarketExtraInfo,
   type TokenInfo,
 } from "@lista-dao/moolah-sdk-core";
+import { classifyIrm } from "../shared/irm.js";
+import { isContractLevelFailure } from "../../rpcErrors.js";
 
 const WEI_VALUE = 10n ** 18n;
 const NATIVE_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
@@ -80,75 +81,63 @@ export async function getSmartMarketExtraInfo(
     fee,
   };
 
-  const isFixedRateIrm =
-    contracts.fixedRateIrm !== zeroAddress && irm === contracts.fixedRateIrm;
-
-  // Get interest rate and provider info
+  // What kind of IRM is this? Ask it, do not look it up. A live market can
+  // point at an IRM in neither address-book slot; address matching alone can
+  // send a fixed-rate IRM down the adaptive-curve path and fail the read.
+  // Nothing below depends on the answer, so it goes out alongside everything
+  // else rather than costing its own round trip.
   const [
-    _rateView,
-    _rateCap,
-    _rateFloor,
-    _priceRate,
-    _rateAtTarget,
-    minLoan,
-    loanProvider,
-    collateralProvider,
+    irmReading,
+    [_rateView, _priceRate, minLoan, loanProvider, collateralProvider],
   ] = await Promise.all([
-    publicClient.readContract({
-      address: irm,
-      abi: INTEREST_RATE_MODEL_ABI,
-      functionName: "borrowRateView",
-      args: [paramsObj, marketObj],
-    }),
-    publicClient.readContract({
-      address: irm,
-      abi: INTEREST_RATE_MODEL_ABI,
-      functionName: "rateCap",
-      args: [marketId],
-    }),
-    publicClient
-      .readContract({
+    classifyIrm(publicClient, irm, marketId, contracts.fixedRateIrm),
+    Promise.all([
+      publicClient.readContract({
         address: irm,
         abi: INTEREST_RATE_MODEL_ABI,
-        functionName: "rateFloor",
-        args: [marketId],
-      })
-      .catch(() => 0n), // rateFloor may not exist on all IRMs
-    publicClient.readContract({
-      address: contracts.moolah,
-      abi: MOOLAH_ABI,
-      functionName: "getPrice",
-      args: [paramsObj],
-    }),
-    isFixedRateIrm
-      ? Promise.resolve(0n)
-      : publicClient.readContract({
-          address: irm,
-          abi: INTEREST_RATE_MODEL_ABI,
-          functionName: "rateAtTarget",
-          args: [marketId],
-        }),
-    publicClient.readContract({
-      address: contracts.moolah,
-      abi: MOOLAH_ABI,
-      functionName: "minLoan",
-      args: [paramsObj],
-    }),
-    publicClient.readContract({
-      address: contracts.moolah,
-      abi: MOOLAH_ABI,
-      functionName: "providers",
-      args: [marketId, loanToken],
-    }),
-    publicClient.readContract({
-      address: contracts.moolah,
-      abi: MOOLAH_ABI,
-      functionName: "providers",
-      args: [marketId, collateralToken],
-    }),
+        functionName: "borrowRateView",
+        args: [paramsObj, marketObj],
+      }),
+      publicClient.readContract({
+        address: contracts.moolah,
+        abi: MOOLAH_ABI,
+        functionName: "getPrice",
+        args: [paramsObj],
+      }),
+      publicClient.readContract({
+        address: contracts.moolah,
+        abi: MOOLAH_ABI,
+        functionName: "minLoan",
+        args: [paramsObj],
+      }),
+      publicClient.readContract({
+        address: contracts.moolah,
+        abi: MOOLAH_ABI,
+        functionName: "providers",
+        args: [marketId, loanToken],
+      }),
+      publicClient.readContract({
+        address: contracts.moolah,
+        abi: MOOLAH_ABI,
+        functionName: "providers",
+        args: [marketId, collateralToken],
+      }),
+    ]),
   ]);
 
+  const isFixedRateIrm = irmReading.isFixedRate;
+  const _rateAtTarget = irmReading.rateAtTarget;
+
   // Get Smart Provider data
+  //
+  // Not every market the API tags with a `smartCollateralConfig` is backed by a
+  // stable-swap SmartProvider. The grouped feed can emit zone-6 entries —
+  // which the reference frontend documents as junk data and
+  // drops on purpose — whose collateral "provider" is a plain asset provider
+  // with no `token()`, `dex()` or `dexLP()` at all. Reading one produced a bare
+  // "the contract function token reverted", which says nothing about the actual
+  // problem: this is not a Smart Lending market. Filter on `zones` containing
+  // 3, and if one slips through, say what went wrong.
   const [tokenA, tokenB, stablePool, LPToken, stablePoolTool] =
     await Promise.all([
       publicClient.readContract({
@@ -181,7 +170,23 @@ export async function getSmartMarketExtraInfo(
         functionName: "dexInfo",
         args: [],
       }),
-    ]);
+    ]).catch((error: unknown) => {
+      // A revert or a missing function says the collateral provider does not
+      // implement the interface — that is the zone-6 case this message is
+      // for. A timeout, a rate limit, a dropped connection says nothing about
+      // the contract at all, and mapping it to "not a Smart Lending market"
+      // turned a retryable RPC failure into a wrong, confident answer about
+      // the market's kind. Anything that is not contract-level is rethrown
+      // as-is so the caller can retry it.
+      if (!isContractLevelFailure(error)) throw error;
+      throw new Error(
+        `getSmartMarketExtraInfo: market ${marketId} is not a Smart Lending ` +
+          `market. Its collateral provider ${collateralProvider} does not ` +
+          `implement the stable-swap SmartProvider interface (token/dex/dexLP). ` +
+          `Smart Lending markets carry zone 3 in the grouped-market feed; ` +
+          `zone 6 entries are known bad data and should be filtered out.`,
+      );
+    });
 
   const tokenAIsNative = tokenA === NATIVE_ADDRESS;
   const tokenBIsNative = tokenB === NATIVE_ADDRESS;
@@ -264,8 +269,16 @@ export async function getSmartMarketExtraInfo(
     new Decimal(balanceB, tokenBInfo.decimals),
   ];
   const totalLp = new Decimal(totalSupply);
-  const rateCap = _rateCap === 0n ? DEFAULT_RATE_CAP : _rateCap;
-  const rateFloor = _rateFloor;
+  // Same rule as the plain market path, and now the same answer for the same
+  // market: a fixed-rate market has no adaptive cap or floor to report, and a
+  // null cap means the IRM has no such view — genuinely uncapped, not capped at
+  // the default. Collapsing those clamped an uncapped market to ~30%.
+  const rateFloor = isFixedRateIrm ? null : irmReading.rateFloor;
+  const rateCap = isFixedRateIrm
+    ? null
+    : irmReading.rateCap === 0n
+      ? DEFAULT_RATE_CAP
+      : irmReading.rateCap;
 
   // Calculate rates
   const remaining = totalSupplyAssets - totalBorrowAssets;
@@ -313,6 +326,7 @@ export async function getSmartMarketExtraInfo(
     rateFloor,
     rateAtTarget,
     rateView,
+    isFixedRate: isFixedRateIrm,
     loanProvider,
     collateralProvider,
     loanIsNative,

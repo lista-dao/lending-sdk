@@ -31,10 +31,44 @@ const baseVaultInfo: VaultInfo = {
   provider: zeroAddress,
 };
 
+/**
+ * The vault builders resolve `provider()` from the vault itself now, so the
+ * mock has to answer it rather than returning one value for every read.
+ */
+const vaultSaying =
+  (provider: Address, rest: unknown = 0n) =>
+  async ({ functionName }: { functionName: string }) =>
+    functionName === "provider" ? provider : rest;
+
+/**
+ * The withdraw path resolves `provider()` too, so its tests need a client that
+ * answers by function name rather than one blanket value. A mock that returns a
+ * bigint for every read hands the resolver a number where an address belongs,
+ * and the assertion that follows never notices.
+ */
+const withdrawDeps = {
+  publicClient: {
+    readContract: vi.fn(vaultSaying(zeroAddress)),
+  } as unknown as PublicClient,
+  network: "bsc" as const,
+};
+
+/**
+ * The same, for a vault that really does route through a provider. The
+ * resolver reads `provider()` off the vault, so a config claiming one is not
+ * enough to produce a provider-targeted step — which is the point.
+ */
+const withdrawDepsVia = (provider: Address) => ({
+  publicClient: {
+    readContract: vi.fn(vaultSaying(provider)),
+  } as unknown as PublicClient,
+  network: "bsc" as const,
+});
+
 describe("buildVaultDepositSteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(vaultSaying(zeroAddress));
   });
 
   it("should build deposit steps with approval", async () => {
@@ -72,6 +106,7 @@ describe("buildVaultDepositSteps", () => {
   });
 
   it("should use provider when set", async () => {
+    mockReadContract.mockImplementation(vaultSaying(PROVIDER));
     const vaultWithProvider = {
       ...baseVaultInfo,
       provider: PROVIDER,
@@ -93,6 +128,7 @@ describe("buildVaultDepositSteps", () => {
   });
 
   it("should handle native BNB deposit with provider", async () => {
+    mockReadContract.mockImplementation(vaultSaying(PROVIDER));
     const nativeVaultInfo = {
       ...baseVaultInfo,
       isNative: true,
@@ -142,7 +178,13 @@ describe("buildVaultDepositSteps", () => {
   });
 
   it("should skip approve when allowance is sufficient", async () => {
-    mockReadContract.mockResolvedValue(10000n * 10n ** 18n);
+    // Dispatched, not blanket. `mockResolvedValue` answered `provider()` with
+    // a bigint as well as `allowance`, so the resolver got a number where an
+    // address belongs and the assertions below — which only count steps —
+    // never looked at the target it produced.
+    mockReadContract.mockImplementation(
+      vaultSaying(zeroAddress, 10000n * 10n ** 18n),
+    );
 
     const steps = await buildVaultDepositSteps(
       {
@@ -156,13 +198,14 @@ describe("buildVaultDepositSteps", () => {
     );
 
     expect(steps.filter((s) => s.step === "approve")).toHaveLength(0);
-    expect(steps.some((s) => s.step === "depositVault")).toBe(true);
+    const deposit = steps.find((s) => s.step === "depositVault");
+    expect(deposit?.params.to).toBe(VAULT_ADDRESS);
   });
 });
 
 describe("buildVaultWithdrawSteps", () => {
-  it("should build withdraw by assets step", () => {
-    const steps = buildVaultWithdrawSteps(
+  it("should build withdraw by assets step", async () => {
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -170,7 +213,7 @@ describe("buildVaultWithdrawSteps", () => {
         walletAddress: WALLET,
       },
       baseVaultInfo,
-      "bsc",
+      withdrawDeps,
     );
 
     expect(steps).toHaveLength(1);
@@ -178,8 +221,8 @@ describe("buildVaultWithdrawSteps", () => {
     expect(steps[0].params.functionName).toBe("withdraw");
   });
 
-  it("should build withdraw by shares step", () => {
-    const steps = buildVaultWithdrawSteps(
+  it("should build withdraw by shares step", async () => {
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -187,7 +230,7 @@ describe("buildVaultWithdrawSteps", () => {
         walletAddress: WALLET,
       },
       baseVaultInfo,
-      "bsc",
+      withdrawDeps,
     );
 
     expect(steps).toHaveLength(1);
@@ -195,12 +238,12 @@ describe("buildVaultWithdrawSteps", () => {
     expect(steps[0].params.functionName).toBe("redeem");
   });
 
-  it("should handle withdrawAll with user data", () => {
+  it("should handle withdrawAll with user data", async () => {
     const userData = {
       shares: { numerator: 1000n * 10n ** 18n },
     } as unknown as VaultUserData;
 
-    const steps = buildVaultWithdrawSteps(
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -208,7 +251,7 @@ describe("buildVaultWithdrawSteps", () => {
         walletAddress: WALLET,
       },
       baseVaultInfo,
-      "bsc",
+      withdrawDeps,
       userData,
     );
 
@@ -216,9 +259,9 @@ describe("buildVaultWithdrawSteps", () => {
     expect(steps[0].params.args).toContain(1000n * 10n ** 18n);
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0x6666666666666666666666666666666666666666" as Address;
-    const steps = buildVaultWithdrawSteps(
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -227,13 +270,13 @@ describe("buildVaultWithdrawSteps", () => {
         receiver,
       },
       baseVaultInfo,
-      "bsc",
+      withdrawDeps,
     );
 
     expect(steps[0].params.args).toContain(receiver);
   });
 
-  it("should use provider for native BNB with shares", () => {
+  it("should use provider for native BNB with shares", async () => {
     const nativeVaultInfo = {
       ...baseVaultInfo,
       isNative: true,
@@ -241,7 +284,7 @@ describe("buildVaultWithdrawSteps", () => {
       assetInfo: { address: WBNB, decimals: 18, symbol: "WBNB" },
     };
 
-    const steps = buildVaultWithdrawSteps(
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -249,13 +292,13 @@ describe("buildVaultWithdrawSteps", () => {
         walletAddress: WALLET,
       },
       nativeVaultInfo,
-      "bsc",
+      withdrawDepsVia(PROVIDER),
     );
 
     expect(steps[0].params.to).toBe(PROVIDER);
   });
 
-  it("should use provider for native BNB with assets", () => {
+  it("should use provider for native BNB with assets", async () => {
     const nativeVaultInfo = {
       ...baseVaultInfo,
       isNative: true,
@@ -263,7 +306,7 @@ describe("buildVaultWithdrawSteps", () => {
       assetInfo: { address: WBNB, decimals: 18, symbol: "WBNB" },
     };
 
-    const steps = buildVaultWithdrawSteps(
+    const steps = await buildVaultWithdrawSteps(
       {
         chainId: 56,
         vaultAddress: VAULT_ADDRESS,
@@ -271,14 +314,14 @@ describe("buildVaultWithdrawSteps", () => {
         walletAddress: WALLET,
       },
       nativeVaultInfo,
-      "bsc",
+      withdrawDepsVia(PROVIDER),
     );
 
     expect(steps[0].params.to).toBe(PROVIDER);
   });
 
-  it("should throw when neither assets nor shares provided", () => {
-    expect(() =>
+  it("should throw when neither assets nor shares provided", async () => {
+    await expect(
       buildVaultWithdrawSteps(
         {
           chainId: 56,
@@ -286,8 +329,8 @@ describe("buildVaultWithdrawSteps", () => {
           walletAddress: WALLET,
         },
         baseVaultInfo,
-        "bsc",
+        withdrawDeps,
       ),
-    ).toThrow("assets or shares is required for vault withdraw");
+    ).rejects.toThrow("assets or shares is required for vault withdraw");
   });
 });

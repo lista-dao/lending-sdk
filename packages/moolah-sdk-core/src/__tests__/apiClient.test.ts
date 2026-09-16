@@ -15,7 +15,9 @@ describe("MoolahApiClient list query serialization", () => {
   let client: MoolahApiClient;
 
   beforeEach(() => {
-    fetchMock = vi.fn().mockResolvedValue(makeSuccessResponse({ total: 0, list: [] }));
+    fetchMock = vi
+      .fn()
+      .mockResolvedValue(makeSuccessResponse({ total: 0, list: [] }));
     client = new MoolahApiClient({
       baseUrl: "https://api.lista.org",
       fetch: fetchMock as unknown as typeof fetch,
