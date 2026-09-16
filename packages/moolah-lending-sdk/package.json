@@ -9,26 +9,37 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./builders": {
+      "types": "./dist/builders/index.d.ts",
+      "import": "./dist/builders/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lista-dao/lending-sdk.git",
+    "directory": "packages/moolah-lending-sdk"
+  },
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "lint": "pnpm exec eslint \"src/**/*.ts\" --fix",
+    "build": "pnpm exec tsc -p tsconfig.build.json",
+    "lint": "pnpm exec eslint \"src/**/*.ts\"",
     "check:types": "pnpm exec tsc --noEmit",
     "test": "pnpm exec vitest run",
     "test:coverage": "pnpm exec vitest run --coverage",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "lint:fix": "pnpm exec eslint \"src/**/*.ts\" --fix"
   },
   "dependencies": {
     "@lista-dao/moolah-sdk-core": "workspace:^",
-    "@morpho-org/blue-sdk": "^1.1.1",
-    "viem": "^2.22.10"
+    "@morpho-org/blue-sdk": "^2.3.2"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -37,6 +48,15 @@
     "@vitest/coverage-v8": "^3.2.4",
     "eslint": "^8.57.0",
     "typescript": "^5.2.2",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "viem": "^2.22.10"
+  },
+  "peerDependencies": {
+    "viem": ">=2.22.10 <3"
+  },
+  "peerDependenciesMeta": {
+    "viem": {
+      "optional": false
+    }
   }
 }

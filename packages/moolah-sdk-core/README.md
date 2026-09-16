@@ -209,7 +209,7 @@ const moolahAddress = getContractAddress("bsc", "moolah");
 ```typescript
 import {
   getApiChain,
-  getListaApiUrl,
+  getApiUrlForNetwork,
   getNativeCurrencySymbol,
   isUsdtLikeToken,
 } from "@lista-dao/moolah-sdk-core";
@@ -218,7 +218,7 @@ import {
 const apiChain = getApiChain("bsc"); // "bsc"
 
 // Get API URL
-const url = getListaApiUrl("prod"); // "https://api.lista.org"
+const url = getApiUrlForNetwork("bsc"); // "https://api.lista.org"
 ```
 
 ## Package Architecture
@@ -252,7 +252,7 @@ moolah-sdk-core/
 └── utils/
     ├── decimal.ts      # Decimal class
     ├── fraction.ts    # Fraction class
-    ├── apiChain.ts     # getApiChain, getListaApiUrl
+    ├── apiChain.ts     # getApiChain, getApiUrlForNetwork
     └── network.ts      # getNativeCurrencySymbol
 ```
 

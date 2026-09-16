@@ -63,8 +63,14 @@ export function calculateDynamicLoanRepayment(
   const rateIndex = new Decimal(position.rate, 27);
   const currentDebt = normalizedDebt.mul(rateIndex);
 
-  // Calculate interest = currentDebt - original principal
-  const currentInterest = currentDebt.sub(principal);
+  // Interest = currentDebt - original principal. A partial repay can leave
+  // normalizedDebt x rateIndex below the recorded principal, and a negative
+  // "interest" would turn the buffer below into a discount — under-sizing the
+  // repayment instead of over-provisioning it. Floor it at zero.
+  const rawInterest = currentDebt.sub(principal);
+  const currentInterest = rawInterest.gt(Decimal.ZERO)
+    ? rawInterest
+    : Decimal.ZERO;
 
   // Add 10% of interest as buffer (excess is refunded)
   const BUFFER_RATE = new Decimal(1n, 1); // 0.1 = 10%
@@ -97,6 +103,7 @@ export function calculateDynamicLoanRepayment(
 export function calculateFixedLoanRepayment(
   position: FixedLoanPosition,
   currentTime?: bigint,
+  loanDecimals = 18,
 ): FixedLoanRepaymentResult {
   const remainingPrincipal = position.principal - position.principalRepaid;
 
@@ -113,9 +120,12 @@ export function calculateFixedLoanRepayment(
   const interestAmount =
     (interestPerSecond * remainingPrincipal * duration) / RATE_SCALE_27;
 
-  // Calculate early repayment penalty if before maturity
+  // Early-repayment penalty, if before maturity. Guarded on a positive rate:
+  // a 0% term (or an apr supplied as a plain rate rather than 1 + rate)
+  // normalizes to zero and would divide by it, throwing a RangeError out of
+  // every caller rather than reporting a zero penalty.
   let penalty = 0n;
-  if (duration < termDuration) {
+  if (interestPerSecond > 0n && duration < termDuration) {
     const remainingDuration = termDuration - duration;
     const denominator =
       (2n * RATE_SCALE_27) / remainingDuration / interestPerSecond - 1n;
@@ -125,7 +135,7 @@ export function calculateFixedLoanRepayment(
   }
 
   const totalRepayBigInt = remainingPrincipal + interestAmount + penalty;
-  const totalRepay = new Decimal(totalRepayBigInt, 18);
+  const totalRepay = new Decimal(totalRepayBigInt, loanDecimals);
 
   return {
     totalRepay,

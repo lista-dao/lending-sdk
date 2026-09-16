@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -22,6 +26,29 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      # `check:types` resolves the facade's imports through the core package's
+      # dist, so it must run after `build` or it fails on a clean checkout.
       - run: pnpm build
+      - run: pnpm check:types
       - run: pnpm test
       - run: pnpm lint
+      - run: pnpm format:check
+      # Inspects the packed manifests, which is the only place the viem peer
+      # dependency and the exports map can be checked as published.
+      - run: pnpm check:packaging
+      - name: The published packages install, compile and load for a consumer
+        run: pnpm check:consumer
+
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm parity:check

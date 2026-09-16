@@ -36,10 +36,38 @@ const baseMarketConfig: WriteMarketConfig = {
   loanIsNative: false,
 };
 
+/**
+ * A mock that answers by function, not with one blanket value.
+ *
+ * The builders now resolve `providers` from the chain rather than trusting the
+ * config, so a mock returning `0n` for every read hands back `0n` where an
+ * address belongs. `chainProviders` says what `Moolah.providers` should report
+ * for this market; everything else (allowance, market state) stays at zero.
+ */
+const chainSaying =
+  (
+    providers: { loan?: Address; collateral?: Address } = {},
+    rest: unknown = 0n,
+  ) =>
+  async ({
+    functionName,
+    args,
+  }: {
+    functionName: string;
+    args?: readonly unknown[];
+  }) => {
+    if (functionName === "providers") {
+      return args?.[1] === LOAN_TOKEN
+        ? (providers.loan ?? zeroAddress)
+        : (providers.collateral ?? zeroAddress);
+    }
+    return rest;
+  };
+
 describe("buildSupplySteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(chainSaying());
   });
 
   it("should build supply steps with approval", async () => {
@@ -76,6 +104,10 @@ describe("buildSupplySteps", () => {
   });
 
   it("should use collateralProvider when set", async () => {
+    mockReadContract.mockImplementation(chainSaying({ collateral: PROVIDER }));
+    // The provider comes from `Moolah.providers` now, not from the config, so
+    // the chain is what has to name it.
+    mockReadContract.mockImplementation(chainSaying({ collateral: PROVIDER }));
     const configWithProvider = {
       ...baseMarketConfig,
       collateralProvider: PROVIDER,
@@ -101,6 +133,9 @@ describe("buildSupplySteps", () => {
       collateralIsNative: true,
       collateralProvider: PROVIDER,
     };
+    // The provider is resolved from the chain now, so the chain has to name it
+    // — a native config whose provider resolves to zero is refused, see below.
+    mockReadContract.mockImplementation(chainSaying({ collateral: PROVIDER }));
 
     const steps = await buildSupplySteps(
       {
@@ -119,7 +154,7 @@ describe("buildSupplySteps", () => {
   });
 
   it("should skip approve when allowance is sufficient", async () => {
-    mockReadContract.mockResolvedValue(10000n * 10n ** 18n);
+    mockReadContract.mockImplementation(chainSaying({}, 10000n * 10n ** 18n));
 
     const steps = await buildSupplySteps(
       {
@@ -137,8 +172,8 @@ describe("buildSupplySteps", () => {
 });
 
 describe("buildBorrowSteps", () => {
-  it("should build borrow step", () => {
-    const steps = buildBorrowSteps(
+  it("should build borrow step", async () => {
+    const steps = await buildBorrowSteps(
       {
         chainId: 56,
         assets: 500n * 10n ** 18n,
@@ -146,6 +181,7 @@ describe("buildBorrowSteps", () => {
       },
       baseMarketConfig,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps).toHaveLength(1);
@@ -153,9 +189,9 @@ describe("buildBorrowSteps", () => {
     expect(steps[0].params.functionName).toBe("borrow");
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0x8888888888888888888888888888888888888888" as Address;
-    const steps = buildBorrowSteps(
+    const steps = await buildBorrowSteps(
       {
         chainId: 56,
         assets: 500n,
@@ -164,18 +200,20 @@ describe("buildBorrowSteps", () => {
       },
       baseMarketConfig,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps[0].params.args).toContain(receiver);
   });
 
-  it("should use loanProvider when set", () => {
+  it("should use loanProvider when set", async () => {
+    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
     const configWithProvider = {
       ...baseMarketConfig,
       loanProvider: PROVIDER,
     };
 
-    const steps = buildBorrowSteps(
+    const steps = await buildBorrowSteps(
       {
         chainId: 56,
         assets: 500n,
@@ -183,6 +221,7 @@ describe("buildBorrowSteps", () => {
       },
       configWithProvider,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps[0].params.to).toBe(PROVIDER);
@@ -192,7 +231,7 @@ describe("buildBorrowSteps", () => {
 describe("buildRepaySteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(chainSaying());
   });
 
   it("should build repay steps with approval", async () => {
@@ -211,6 +250,7 @@ describe("buildRepaySteps", () => {
   });
 
   it("should handle native loan repay", async () => {
+    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
     const nativeConfig = {
       ...baseMarketConfig,
       loanIsNative: true,
@@ -262,6 +302,7 @@ describe("buildRepaySteps", () => {
   });
 
   it("should handle repayAll with native loan and user data", async () => {
+    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
     const nativeConfig = {
       ...baseMarketConfig,
       loanIsNative: true,
@@ -297,7 +338,23 @@ describe("buildRepaySteps", () => {
     expect(repayStep?.params.value).toBe(500n);
   });
 
-  it("should use shares when provided", async () => {
+  it("should use shares when provided, and approve what they cost", async () => {
+    // Repaying by shares says how much debt to clear, not how many tokens it
+    // takes. Sizing the approval from `assets` (zero on this path) emitted no
+    // approve step at all, and the repayment reverted inside `transferFrom` —
+    // found by running it on a fork, not by reading it.
+    mockReadContract.mockImplementation(
+      async ({ functionName }: { functionName: string }) => {
+        if (functionName === "market") {
+          // totalSupplyAssets, totalSupplyShares, totalBorrowAssets,
+          // totalBorrowShares, lastUpdate, fee
+          return [0n, 0n, 1_000n, 2_000n, 1n, 0n];
+        }
+        if (functionName === "providers") return zeroAddress;
+        return 0n;
+      },
+    );
+
     const steps = await buildRepaySteps(
       {
         chainId: 56,
@@ -310,10 +367,25 @@ describe("buildRepaySteps", () => {
 
     const repayStep = steps.find((s) => s.step === "repay");
     expect(repayStep?.params.args).toContain(500n);
+    // Priced through the protocol's virtual assets and shares — a bare
+    // 500/2000 * 1000 ratio would say 250 and under-approve a thin market.
+    const approve = steps.find((s) => s.step === "approve");
+    expect(approve?.meta?.amount).toBe(2n);
+  });
+
+  it("refuses a share-denominated repay it cannot price", async () => {
+    mockReadContract.mockImplementation(chainSaying());
+    await expect(
+      buildRepaySteps(
+        { chainId: 56, shares: 500n, walletAddress: WALLET },
+        baseMarketConfig,
+        { publicClient: mockPublicClient, network: "bsc" },
+      ),
+    ).rejects.toThrow(/could not read the market state/);
   });
 
   it("should skip approve when allowance is sufficient", async () => {
-    mockReadContract.mockResolvedValue(10000n * 10n ** 18n);
+    mockReadContract.mockImplementation(chainSaying({}, 10000n * 10n ** 18n));
 
     const steps = await buildRepaySteps(
       {
@@ -330,6 +402,7 @@ describe("buildRepaySteps", () => {
   });
 
   it("should use loanProvider when not zero address", async () => {
+    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
     const configWithProvider = {
       ...baseMarketConfig,
       loanProvider: PROVIDER,
@@ -351,8 +424,8 @@ describe("buildRepaySteps", () => {
 });
 
 describe("buildWithdrawSteps", () => {
-  it("should build withdraw step", () => {
-    const steps = buildWithdrawSteps(
+  it("should build withdraw step", async () => {
+    const steps = await buildWithdrawSteps(
       {
         chainId: 56,
         assets: 500n * 10n ** 18n,
@@ -360,6 +433,7 @@ describe("buildWithdrawSteps", () => {
       },
       baseMarketConfig,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps).toHaveLength(1);
@@ -367,9 +441,9 @@ describe("buildWithdrawSteps", () => {
     expect(steps[0].params.functionName).toBe("withdrawCollateral");
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0x9999999999999999999999999999999999999999" as Address;
-    const steps = buildWithdrawSteps(
+    const steps = await buildWithdrawSteps(
       {
         chainId: 56,
         assets: 500n,
@@ -378,18 +452,20 @@ describe("buildWithdrawSteps", () => {
       },
       baseMarketConfig,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps[0].params.args).toContain(receiver);
   });
 
-  it("should use collateralProvider when set", () => {
+  it("should use collateralProvider when set", async () => {
+    mockReadContract.mockImplementation(chainSaying({ collateral: PROVIDER }));
     const configWithProvider = {
       ...baseMarketConfig,
       collateralProvider: PROVIDER,
     };
 
-    const steps = buildWithdrawSteps(
+    const steps = await buildWithdrawSteps(
       {
         chainId: 56,
         assets: 500n,
@@ -397,8 +473,55 @@ describe("buildWithdrawSteps", () => {
       },
       configWithProvider,
       "bsc",
+      mockPublicClient,
     );
 
     expect(steps[0].params.to).toBe(PROVIDER);
+  });
+});
+
+describe("a native step can never be built against the zero address", () => {
+  // Resolution broke a pairing the native flags used to rely on. A config
+  // carrying `isNative: true` always carried a real provider, because that is
+  // how `getMarketExtraInfo` derives the flag — but `Moolah.providers` returns
+  // `0x0` for any pair with no provider registered, as a successful read. The
+  // native branches take the provider as the call target with no zero guard,
+  // so the step would carry the full amount as `value` to `0x0`, where it
+  // succeeds and the funds are gone.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(chainSaying());
+  });
+
+  it("refuses a native collateral supply when the chain has no provider", async () => {
+    await expect(
+      buildSupplySteps(
+        { chainId: 56, assets: 1000n, walletAddress: WALLET },
+        { ...baseMarketConfig, collateralIsNative: true },
+        { publicClient: mockPublicClient, network: "bsc" },
+      ),
+    ).rejects.toThrow(/zero address/);
+  });
+
+  it("refuses a native loan repay when the chain has no provider", async () => {
+    await expect(
+      buildRepaySteps(
+        { chainId: 56, assets: 1000n, walletAddress: WALLET },
+        {
+          ...baseMarketConfig,
+          loanIsNative: true,
+          loanInfo: {
+            address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+            decimals: 18,
+            symbol: "WBNB",
+          },
+          params: {
+            ...baseMarketConfig.params,
+            loanToken: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+          },
+        },
+        { publicClient: mockPublicClient, network: "bsc" },
+      ),
+    ).rejects.toThrow(/zero address/);
   });
 });

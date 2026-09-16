@@ -24,10 +24,10 @@ export interface ApiTableParams {
 
 /**
  * Chain filter for list APIs.
- * - string: single chain (e.g. "bsc")
- * - string[]: multi-chain (serialized as "bsc,ethereum")
+ * - a chain
+ * - chains (serialized as a comma-separated list)
  */
-export type ApiChainFilter = string | string[];
+export type ApiChainFilter = "bsc" | "ethereum" | ("bsc" | "ethereum")[];
 
 /**
  * Query params for getVaultList
@@ -249,4 +249,116 @@ export interface ApiMarketVault {
 export interface ApiMarketVaultList {
   total: number;
   list: ApiMarketVault[];
+}
+
+/**
+ * A market as returned by the grouped catalogue.
+ *
+ * The grouped endpoint returns every zone in one response; the flat market
+ * list returns one zone per call and defaults to zone 0. Both reach the same
+ * markets. `collateralUiMultiplier` appears only here, on the group.
+ */
+export interface ApiGroupedMarketItem {
+  id: string;
+  chain: string;
+  loanToken?: string;
+  collateralToken?: string;
+  loan?: string;
+  collateral?: string;
+  lltv?: string;
+  termType?: number;
+  zone?: number;
+  /**
+   * Present on Smart Lending markets. Carries the per-market SmartProvider,
+   * which has no address-book entry and cannot be resolved any other way.
+   */
+  smartCollateralConfig?: {
+    provider?: string;
+    dexInfo?: string;
+    swapPool?: string;
+    token0?: string;
+    token1?: string;
+    [key: string]: unknown;
+  };
+  [key: string]: unknown;
+}
+
+/**
+ * One collateral group in the grouped catalogue.
+ *
+ * The display multiplier lives here, on the collateral, rather than on each
+ * market — which is correct, since a split is a property of the token.
+ */
+export interface ApiMarketGroup {
+  collateralToken?: string;
+  collateralTokenSymbol?: string;
+  collateralPrice?: string;
+  /**
+   * Decimal string; `"1"` means no split applied. Display only — parse with
+   * `parseUiMultiplier` from the `/display` subpath and never let the result
+   * near calldata.
+   */
+  collateralUiMultiplier?: string;
+  marketCount?: number;
+  chain?: string;
+  markets?: ApiGroupedMarketItem[];
+  [key: string]: unknown;
+}
+
+export interface ApiGroupedMarketList {
+  totalGroups?: number;
+  totalMarkets?: number;
+  groups: ApiMarketGroup[];
+  [key: string]: unknown;
+}
+
+export interface ApiGroupedMarketListParams {
+  page?: number;
+  pageSize?: number;
+  chain?: ApiChainFilter;
+  zone?: number;
+  sort?: string;
+  order?: "asc" | "desc";
+  keyword?: string;
+}
+
+/** A position at or past the liquidation threshold. */
+export interface ApiLiquidationItem {
+  marketId: string;
+  user: string;
+  collateral: string;
+  borrowed: string;
+  collateralToken: string;
+  collateralSymbol?: string;
+  collateralDecimal?: number;
+  /** Decimal string. Display only — never scale calldata by this. */
+  collateralUiMultiplier?: string;
+  loanToken?: string;
+  oracle?: string;
+  lltv?: string;
+  [key: string]: unknown;
+}
+
+export interface ApiLiquidationList {
+  total: number;
+  list: ApiLiquidationItem[];
+}
+
+export interface ApiLiquidationListParams {
+  page?: number;
+  pageSize?: number;
+  /** Defaults to "discountRate" — the most profitable targets first. */
+  sort?: string;
+  order?: "asc" | "desc";
+}
+
+export interface ApiCloseToLiquidateParams {
+  page?: number;
+  pageSize?: number;
+  /** Restrict to these collateral token addresses. */
+  collaterals?: string[];
+  /** Restrict to one borrower. */
+  userAddress?: string;
+  /** Minimum outstanding debt in USD. */
+  loanInUsd?: number;
 }

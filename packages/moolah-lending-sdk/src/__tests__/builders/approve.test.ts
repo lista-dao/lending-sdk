@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { PublicClient, Address } from "viem";
-import { buildApproveSteps, ERC20_APPROVE_ABI } from "../../builders/approve.js";
+import {
+  buildApproveSteps,
+  ERC20_APPROVE_ABI,
+} from "../../builders/approve.js";
 
 const mockReadContract = vi.fn();
 
@@ -83,8 +86,7 @@ describe("buildApproveSteps", () => {
   });
 
   it("should reset USDT-like tokens before approving (ethereum mainnet only)", async () => {
-    const ETH_USDT =
-      "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
+    const ETH_USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
     mockReadContract.mockResolvedValue(100n); // Has some existing allowance
 
     const steps = await buildApproveSteps(
@@ -114,8 +116,7 @@ describe("buildApproveSteps", () => {
   });
 
   it("should not reset BSC USDT (only ethereum USDT uses reset)", async () => {
-    const BSC_USDT =
-      "0x55d398326f99059fF775485246999027B3197955" as Address;
+    const BSC_USDT = "0x55d398326f99059fF775485246999027B3197955" as Address;
     mockReadContract.mockResolvedValue(100n);
 
     const steps = await buildApproveSteps(
@@ -136,8 +137,7 @@ describe("buildApproveSteps", () => {
   });
 
   it("should not reset USDT if allowance is zero", async () => {
-    const ETH_USDT =
-      "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
+    const ETH_USDT = "0xdAC17F958D2ee523a2206206994597C13D831ec7" as Address;
     mockReadContract.mockResolvedValue(0n);
 
     const steps = await buildApproveSteps(

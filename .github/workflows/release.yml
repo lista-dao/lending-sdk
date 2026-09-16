@@ -7,27 +7,90 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 
+permissions:
+  contents: read
+
 jobs:
-  release:
+  # The gates run without the publish token in scope. The build toolchain here
+  # is large — vitest pulls rollup, vite, postcss and friends — and none of it
+  # has any business executing in the same job that holds a credential able to
+  # publish to npm.
+  verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: pnpm/action-setup@v4
         with:
           version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm check:types
+      - run: pnpm test
+      - run: pnpm lint
+      - run: pnpm format:check
+      - run: pnpm check:packaging
+      - name: The published packages install, compile and load for a consumer
+        run: pnpm check:consumer
+      # The gap the parity comparator exists to close is exactly the gap a
+      # release reopens, so it gates the publish and not only the PR.
+      - name: SDK write surface against the frontend's
+        run: pnpm parity:check
 
+  # `changeset publish` reads the *current* package.json version and skips
+  # anything already on npm — it does not read the pending changeset files or
+  # bump anything itself. Calling it straight from a push to main, with the
+  # manifests still at their pre-release version, is a silent no-op: both
+  # packages here are already published at their current manifest version, so
+  # this job would report success and ship nothing.
+  #
+  # `changesets/action` is what closes that gap, and it runs one of two ways
+  # depending on what it finds:
+  #   - pending changesets exist  -> runs `version`, which bumps the
+  #     manifests, updates CHANGELOG.md and deletes the consumed changeset
+  #     files, then opens (or updates) a "Version Packages" pull request with
+  #     that diff. Nothing is published on this run.
+  #   - no pending changesets     -> a Version Packages PR was just merged, so
+  #     the manifests already carry the release version. Runs `publish`,
+  #     which is the real npm publish.
+  # A push to main after this PR merges will do the former; merging the
+  # Version Packages PR that produces is what triggers the latter.
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      # Lets npm attach a provenance attestation, so a consumer can verify
+      # which commit and which workflow produced the tarball.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # changesets/action needs the full history to compute the changeset
+          # diff against the base branch.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
           registry-url: https://registry.npmjs.org
-
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm test
 
-      - name: Publish to npm
-        run: pnpm changeset publish
+      - name: Version Packages PR, or publish once one has been merged
+        uses: changesets/action@v1
+        with:
+          version: pnpm changeset version
+          publish: pnpm changeset publish
+          commit: "chore: version packages"
+          title: "chore: version packages"
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

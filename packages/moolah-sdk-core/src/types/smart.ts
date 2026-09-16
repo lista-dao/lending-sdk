@@ -31,10 +31,17 @@ export interface SmartMarketExtraInfo {
   utilRate: Decimal;
   borrowRate: Decimal;
   priceRate: Decimal;
-  rateCap: bigint;
-  rateFloor: bigint;
+  /** Null when the market is fixed-rate, or the IRM exposes no cap. */
+  rateCap: bigint | null;
+  /** Null when the market is fixed-rate, or the IRM exposes no floor. */
+  rateFloor: bigint | null;
   rateAtTarget: bigint;
   rateView: bigint;
+  /**
+   * True when the market's rate is fixed rather than adaptive-curve.
+   * Decided by asking the IRM, not by matching its address — see classifyIrm.
+   */
+  isFixedRate: boolean;
   // Provider addresses
   loanProvider: Address;
   collateralProvider: Address;
