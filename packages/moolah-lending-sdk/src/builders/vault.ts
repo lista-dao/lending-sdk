@@ -38,6 +38,7 @@ export async function buildVaultDepositSteps(
     params.vaultAddress,
     vaultInfo,
     deps.publicClient,
+    deps.network,
   );
 
   const { publicClient, network } = deps;
@@ -142,6 +143,7 @@ export async function buildVaultWithdrawSteps(
     params.vaultAddress,
     vaultInfo,
     deps.publicClient,
+    deps.network,
   );
 
   const { network } = deps;
@@ -309,6 +311,7 @@ export async function buildVaultMintSteps(
     params.vaultAddress,
     vaultInfo,
     deps.publicClient,
+    deps.network,
   );
 
   if (params.shares <= 0n) {

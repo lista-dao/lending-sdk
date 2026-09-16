@@ -105,6 +105,9 @@ vi.mock("../read/vault/getVaultUserData", () => ({
 }));
 
 vi.mock("../read/smart/getSmartMarketExtraInfo", () => ({
+  // resolveProviders.ts imports this sentinel to derive Smart pool tokens'
+  // native flags from chain fact — the mocked module has to re-export it too.
+  NATIVE_ADDRESS: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
   getSmartMarketExtraInfo: vi.fn().mockResolvedValue({
     params: {
       loanToken: "0x0000000000000000000000000000000000000001",
