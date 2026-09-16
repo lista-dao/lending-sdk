@@ -217,14 +217,13 @@ async function main() {
         const selector = toFunctionSelector(sig).slice(2);
         report.checked += 1;
         if (!code.includes(selector)) {
-        const key = `${network}.${contract}.${entry.name}`;
-        report.missing.push({
-          network,
-          contract,
-          address,
-          fn: entry.name,
-          selector: `0x${selector}`,
-        });
+          report.missing.push({
+            network,
+            contract,
+            address,
+            fn: entry.name,
+            selector: `0x${selector}`,
+          });
         }
       }
       report.networks[network].push(contract);

@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getContractAddress } from "@lista-dao/moolah-sdk-core";
-import type { PublicClient, Address } from "viem";
+import {
+  getContractAddress,
+  LENDING_BROKER_ABI,
+} from "@lista-dao/moolah-sdk-core";
+import { decodeFunctionData, type PublicClient, type Address } from "viem";
 import {
   buildBrokerBorrowSteps,
   buildBrokerRepaySteps,
+  buildBrokerRepayAllSteps,
+  buildConvertDynamicToFixedSteps,
+  buildBrokerRefinanceMaturedSteps,
 } from "../../builders/broker.js";
+
+const decode = (data: `0x${string}`) =>
+  decodeFunctionData({ abi: LENDING_BROKER_ABI, data });
 
 const mockReadContract = vi.fn();
 const mockPublicClient = {
@@ -199,5 +208,198 @@ describe("buildBrokerRepaySteps", () => {
 
     const repayStep = steps.find((s) => s.step === "brokerRepay");
     expect(repayStep?.params.args).toContain(WALLET);
+  });
+});
+
+/**
+ * Restored after a wholesale test-file deletion dropped 16 tests alongside
+ * the one that was genuinely obsolete (a BSC-Testnet-specific `repayAll`
+ * refusal — moot now that `NetworkName` no longer admits "bscTestnet" at
+ * all, so the guard it tested was correctly removed as dead code). These
+ * three builders otherwise had zero remaining coverage for their own
+ * argument validation and step encoding.
+ */
+describe("buildConvertDynamicToFixedSteps", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(brokerAware);
+  });
+
+  it("is a single step with no approval and no authorization", async () => {
+    const steps = await buildConvertDynamicToFixedSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        amount: 500n,
+        termId: 3600n,
+      },
+      mockPublicClient,
+      "bsc",
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0].step).toBe("convertDynamicToFixed");
+    expect(steps[0].index).toBe(0);
+    const { functionName, args } = decode(steps[0].params.data);
+    expect(functionName).toBe("convertDynamicToFixed");
+    expect(args).toEqual([500n, 3600n]);
+  });
+
+  it("rejects a zero amount, which the contract reverts on", async () => {
+    await expect(
+      buildConvertDynamicToFixedSteps(
+        {
+          chainId: 56,
+          brokerAddress: BROKER_ADDRESS,
+          amount: 0n,
+          termId: 600n,
+        },
+        mockPublicClient,
+        "bsc",
+      ),
+    ).rejects.toThrow(/greater than zero/);
+  });
+});
+
+describe("buildBrokerRefinanceMaturedSteps", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(brokerAware);
+  });
+
+  it("encodes the position id list", async () => {
+    const steps = await buildBrokerRefinanceMaturedSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        user: WALLET,
+        positionIds: [1n, 4n, 9n],
+      },
+      mockPublicClient,
+      "bsc",
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0].step).toBe("brokerRefinanceMatured");
+    expect(decode(steps[0].params.data).args).toEqual([WALLET, [1n, 4n, 9n]]);
+  });
+
+  it("rejects an empty id list", async () => {
+    await expect(
+      buildBrokerRefinanceMaturedSteps(
+        {
+          chainId: 56,
+          brokerAddress: BROKER_ADDRESS,
+          user: WALLET,
+          positionIds: [],
+        },
+        mockPublicClient,
+        "bsc",
+      ),
+    ).rejects.toThrow(/must not be empty/);
+  });
+});
+
+describe("buildBrokerRepayAllSteps", () => {
+  const clientWithAllowance = (allowance: bigint): PublicClient =>
+    ({
+      readContract: vi.fn(
+        async ({ functionName }: { functionName: string }) => {
+          if (functionName === "allowance") return allowance;
+          return brokerAware({ functionName });
+        },
+      ),
+    }) as unknown as PublicClient;
+
+  it("approves the broker first, then repays", async () => {
+    const steps = await buildBrokerRepayAllSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        onBehalf: WALLET,
+        maxRepayAmount: 1000n,
+        loanToken: LOAN_TOKEN,
+        walletAddress: WALLET,
+      },
+      clientWithAllowance(0n),
+      "bsc",
+    );
+    expect(steps.map((s) => [s.step, s.index])).toEqual([
+      ["approve", 0],
+      ["brokerRepayAll", 1],
+      ["approve", 2],
+    ]);
+    expect(decode(steps[1].params.data).args).toEqual([WALLET]);
+    expect(steps[1].params.value).toBeUndefined();
+    // The approval was sized for a debt that keeps growing, so the broker
+    // takes less than was approved; the remainder goes back rather than
+    // standing.
+    expect(steps[2].meta?.amount).toBe(0n);
+    expect(steps[2].meta?.spender).toBe(BROKER_ADDRESS);
+  });
+
+  it("skips the approval when the allowance already covers the ceiling", async () => {
+    const steps = await buildBrokerRepayAllSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        onBehalf: WALLET,
+        maxRepayAmount: 1000n,
+        loanToken: LOAN_TOKEN,
+        walletAddress: WALLET,
+      },
+      clientWithAllowance(10_000n),
+      "bsc",
+    );
+    expect(steps.map((s) => s.step)).toEqual(["brokerRepayAll"]);
+  });
+
+  it("sends value instead of approving for a native loan token", async () => {
+    const client = clientWithAllowance(0n);
+    const steps = await buildBrokerRepayAllSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        onBehalf: WALLET,
+        maxRepayAmount: 1000n,
+        isNativeLoanToken: true,
+      },
+      client,
+      "bsc",
+    );
+    expect(steps.map((s) => s.step)).toEqual(["brokerRepayAll"]);
+    expect(steps[0].params.value).toBe(1000n);
+    const read = (client.readContract as ReturnType<typeof vi.fn>).mock
+      .calls as Array<[{ functionName: string }]>;
+    expect(read.map(([a]) => a.functionName)).not.toContain("allowance");
+    expect(read.map(([a]) => a.functionName)).toContain("brokers");
+  });
+
+  it("rejects a zero ceiling", async () => {
+    await expect(
+      buildBrokerRepayAllSteps(
+        {
+          chainId: 56,
+          brokerAddress: BROKER_ADDRESS,
+          onBehalf: WALLET,
+          maxRepayAmount: 0n,
+        },
+        clientWithAllowance(0n),
+        "bsc",
+      ),
+    ).rejects.toThrow(/greater than zero/);
+  });
+
+  it("requires loanToken and walletAddress unless the loan is native", async () => {
+    await expect(
+      buildBrokerRepayAllSteps(
+        {
+          chainId: 56,
+          brokerAddress: BROKER_ADDRESS,
+          onBehalf: WALLET,
+          maxRepayAmount: 1000n,
+        },
+        clientWithAllowance(0n),
+        "bsc",
+      ),
+    ).rejects.toThrow(/loanToken|walletAddress/);
   });
 });
