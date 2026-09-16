@@ -7,6 +7,7 @@ import {
 } from "../../builders/vault.js";
 import {
   Decimal,
+  getContractAddress,
   type VaultInfo,
   type VaultUserData,
 } from "@lista-dao/moolah-sdk-core";
@@ -20,6 +21,9 @@ const VAULT_ADDRESS = "0x1111111111111111111111111111111111111111" as Address;
 const ASSET_TOKEN = "0x2222222222222222222222222222222222222222" as Address;
 const WALLET = "0x3333333333333333333333333333333333333333" as Address;
 const PROVIDER = "0x4444444444444444444444444444444444444444" as Address;
+// `isNative` is now derived from the resolved provider matching this
+// singleton, not trusted from the config — see resolveProviders.ts.
+const NATIVE_PROVIDER = getContractAddress("bsc", "nativeProvider");
 const WBNB = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address;
 
 const baseVaultInfo: VaultInfo = {
@@ -128,11 +132,11 @@ describe("buildVaultDepositSteps", () => {
   });
 
   it("should handle native BNB deposit with provider", async () => {
-    mockReadContract.mockImplementation(vaultSaying(PROVIDER));
+    mockReadContract.mockImplementation(vaultSaying(NATIVE_PROVIDER));
     const nativeVaultInfo = {
       ...baseVaultInfo,
       isNative: true,
-      provider: PROVIDER,
+      provider: NATIVE_PROVIDER,
       assetInfo: { address: WBNB, decimals: 18, symbol: "WBNB" },
     };
 
@@ -151,7 +155,7 @@ describe("buildVaultDepositSteps", () => {
     expect(steps.some((s) => s.step === "approve")).toBe(false);
     const depositStep = steps.find((s) => s.step === "depositVault");
     expect(depositStep?.params.value).toBe(1000n);
-    expect(depositStep?.params.to).toBe(PROVIDER);
+    expect(depositStep?.params.to).toBe(NATIVE_PROVIDER);
   });
 
   it("should handle native BNB deposit without provider", async () => {

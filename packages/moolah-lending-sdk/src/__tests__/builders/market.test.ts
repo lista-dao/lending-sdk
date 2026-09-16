@@ -7,7 +7,10 @@ import {
   buildRepaySteps,
   buildWithdrawSteps,
 } from "../../builders/market.js";
-import type { WriteMarketConfig } from "@lista-dao/moolah-sdk-core";
+import {
+  getContractAddress,
+  type WriteMarketConfig,
+} from "@lista-dao/moolah-sdk-core";
 
 const mockReadContract = vi.fn();
 const mockPublicClient = {
@@ -19,6 +22,11 @@ const COLLATERAL_TOKEN =
 const LOAN_TOKEN = "0x2222222222222222222222222222222222222222" as Address;
 const WALLET = "0x3333333333333333333333333333333333333333" as Address;
 const PROVIDER = "0x4444444444444444444444444444444444444444" as Address;
+// `isNative` is now derived from the resolved provider matching this
+// singleton, not trusted from the config — see resolveProviders.ts. Tests
+// that mean to exercise the native branch have to resolve to this address,
+// not an arbitrary one.
+const NATIVE_PROVIDER = getContractAddress("bsc", "nativeProvider");
 
 const baseMarketConfig: WriteMarketConfig = {
   params: {
@@ -131,11 +139,13 @@ describe("buildSupplySteps", () => {
     const nativeConfig = {
       ...baseMarketConfig,
       collateralIsNative: true,
-      collateralProvider: PROVIDER,
+      collateralProvider: NATIVE_PROVIDER,
     };
-    // The provider is resolved from the chain now, so the chain has to name it
-    // — a native config whose provider resolves to zero is refused, see below.
-    mockReadContract.mockImplementation(chainSaying({ collateral: PROVIDER }));
+    // `collateralIsNative` is now derived from the resolved provider matching
+    // the network's nativeProvider singleton, not trusted from the config.
+    mockReadContract.mockImplementation(
+      chainSaying({ collateral: NATIVE_PROVIDER }),
+    );
 
     const steps = await buildSupplySteps(
       {
@@ -250,11 +260,11 @@ describe("buildRepaySteps", () => {
   });
 
   it("should handle native loan repay", async () => {
-    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
+    mockReadContract.mockImplementation(chainSaying({ loan: NATIVE_PROVIDER }));
     const nativeConfig = {
       ...baseMarketConfig,
       loanIsNative: true,
-      loanProvider: PROVIDER,
+      loanProvider: NATIVE_PROVIDER,
       loanInfo: {
         ...baseMarketConfig.loanInfo,
         address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
@@ -302,11 +312,11 @@ describe("buildRepaySteps", () => {
   });
 
   it("should handle repayAll with native loan and user data", async () => {
-    mockReadContract.mockImplementation(chainSaying({ loan: PROVIDER }));
+    mockReadContract.mockImplementation(chainSaying({ loan: NATIVE_PROVIDER }));
     const nativeConfig = {
       ...baseMarketConfig,
       loanIsNative: true,
-      loanProvider: PROVIDER,
+      loanProvider: NATIVE_PROVIDER,
       loanInfo: {
         ...baseMarketConfig.loanInfo,
         address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
@@ -480,48 +490,53 @@ describe("buildWithdrawSteps", () => {
   });
 });
 
-describe("a native step can never be built against the zero address", () => {
-  // Resolution broke a pairing the native flags used to rely on. A config
-  // carrying `isNative: true` always carried a real provider, because that is
-  // how `getMarketExtraInfo` derives the flag — but `Moolah.providers` returns
-  // `0x0` for any pair with no provider registered, as a successful read. The
-  // native branches take the provider as the call target with no zero guard,
-  // so the step would carry the full amount as `value` to `0x0`, where it
-  // succeeds and the funds are gone.
+describe("a config's native claim can never route value to the zero address", () => {
+  // `*IsNative` is now derived from the resolved provider matching the
+  // network's nativeProvider singleton (see resolveProviders.ts), not
+  // trusted from the config. A config forging `isNative: true` for a market
+  // whose chain-registered provider is `0x0` no longer needs a guard that
+  // rejects the build — the flag is silently corrected to `false`, and the
+  // step falls back to the ordinary ERC-20 path against Moolah directly.
   beforeEach(() => {
     vi.clearAllMocks();
     mockReadContract.mockImplementation(chainSaying());
   });
 
-  it("refuses a native collateral supply when the chain has no provider", async () => {
-    await expect(
-      buildSupplySteps(
-        { chainId: 56, assets: 1000n, walletAddress: WALLET },
-        { ...baseMarketConfig, collateralIsNative: true },
-        { publicClient: mockPublicClient, network: "bsc" },
-      ),
-    ).rejects.toThrow(/zero address/);
+  it("falls back to the ERC-20 path when a native collateral claim has no chain provider", async () => {
+    const steps = await buildSupplySteps(
+      { chainId: 56, assets: 1000n, walletAddress: WALLET },
+      { ...baseMarketConfig, collateralIsNative: true },
+      { publicClient: mockPublicClient, network: "bsc" },
+    );
+
+    expect(steps.some((s) => s.step === "approve")).toBe(true);
+    const supplyStep = steps.find((s) => s.step === "supply");
+    expect(supplyStep?.params.to).toBe(getContractAddress("bsc", "moolah"));
+    expect(supplyStep?.params.value).toBeUndefined();
   });
 
-  it("refuses a native loan repay when the chain has no provider", async () => {
-    await expect(
-      buildRepaySteps(
-        { chainId: 56, assets: 1000n, walletAddress: WALLET },
-        {
-          ...baseMarketConfig,
-          loanIsNative: true,
-          loanInfo: {
-            address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
-            decimals: 18,
-            symbol: "WBNB",
-          },
-          params: {
-            ...baseMarketConfig.params,
-            loanToken: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
-          },
+  it("falls back to the ERC-20 path when a native loan-repay claim has no chain provider", async () => {
+    const steps = await buildRepaySteps(
+      { chainId: 56, assets: 1000n, walletAddress: WALLET },
+      {
+        ...baseMarketConfig,
+        loanIsNative: true,
+        loanInfo: {
+          address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+          decimals: 18,
+          symbol: "WBNB",
         },
-        { publicClient: mockPublicClient, network: "bsc" },
-      ),
-    ).rejects.toThrow(/zero address/);
+        params: {
+          ...baseMarketConfig.params,
+          loanToken: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+        },
+      },
+      { publicClient: mockPublicClient, network: "bsc" },
+    );
+
+    expect(steps.some((s) => s.step === "approve")).toBe(true);
+    const repayStep = steps.find((s) => s.step === "repay");
+    expect(repayStep?.params.to).toBe(getContractAddress("bsc", "moolah"));
+    expect(repayStep?.params.value).toBeUndefined();
   });
 });

@@ -9,7 +9,11 @@ import {
   buildSmartWithdrawCollateralFixedSteps,
   buildSmartRepaySteps,
 } from "../../builders/smart.js";
-import type { WriteSmartMarketConfig } from "@lista-dao/moolah-sdk-core";
+import {
+  getContractAddress,
+  type WriteSmartMarketConfig,
+} from "@lista-dao/moolah-sdk-core";
+import { NATIVE_ADDRESS } from "../../read/smart/getSmartMarketExtraInfo.js";
 
 const mockReadContract = vi.fn();
 const mockPublicClient = {
@@ -24,6 +28,11 @@ const WALLET = "0x5555555555555555555555555555555555555555" as Address;
 const COLLATERAL_PROVIDER =
   "0x6666666666666666666666666666666666666666" as Address;
 const LOAN_PROVIDER = "0x7777777777777777777777777777777777777777" as Address;
+// `*IsNative` is now derived from chain fact (see resolveProviders.ts),
+// not trusted from the config — tests meaning to exercise the native
+// branch have to resolve to the real singleton / sentinel, not an
+// arbitrary placeholder address.
+const NATIVE_PROVIDER = getContractAddress("bsc", "nativeProvider");
 
 const baseSmartConfig: WriteSmartMarketConfig = {
   params: {
@@ -50,7 +59,7 @@ const baseSmartConfig: WriteSmartMarketConfig = {
  * back a number where an address belongs.
  */
 const chainSaying =
-  (rest: unknown = 0n) =>
+  (rest: unknown = 0n, tokens?: { token0?: Address; token1?: Address }) =>
   async ({
     functionName,
     args,
@@ -60,6 +69,11 @@ const chainSaying =
   }) => {
     if (functionName === "providers") {
       return args?.[1] === LOAN_TOKEN ? LOAN_PROVIDER : COLLATERAL_PROVIDER;
+    }
+    if (functionName === "token" && tokens) {
+      return args?.[0] === 0n
+        ? (tokens.token0 ?? rest)
+        : (tokens.token1 ?? rest);
     }
     return rest;
   };
@@ -151,6 +165,9 @@ describe("buildSmartSupplyCollateralSteps", () => {
   });
 
   it("should skip approval for native token A", async () => {
+    mockReadContract.mockImplementation(
+      chainSaying(0n, { token0: NATIVE_ADDRESS }),
+    );
     const nativeTokenAConfig = {
       ...baseSmartConfig,
       tokenAIsNative: true,
@@ -174,6 +191,9 @@ describe("buildSmartSupplyCollateralSteps", () => {
   });
 
   it("should skip approval for native token B", async () => {
+    mockReadContract.mockImplementation(
+      chainSaying(0n, { token1: NATIVE_ADDRESS }),
+    );
     const nativeTokenBConfig = {
       ...baseSmartConfig,
       tokenBIsNative: true,
@@ -373,6 +393,14 @@ describe("buildSmartRepaySteps", () => {
   });
 
   it("should handle native loan repay", async () => {
+    // `loanIsNative` is now derived from the resolved loan provider matching
+    // the network's nativeProvider singleton, not trusted from the config.
+    mockReadContract.mockImplementation(async ({ functionName, args }) => {
+      if (functionName === "providers") {
+        return args?.[1] === LOAN_TOKEN ? NATIVE_PROVIDER : COLLATERAL_PROVIDER;
+      }
+      return 0n;
+    });
     const nativeLoanConfig = {
       ...baseSmartConfig,
       loanIsNative: true,
@@ -392,7 +420,7 @@ describe("buildSmartRepaySteps", () => {
     expect(steps.some((s) => s.step === "approve")).toBe(false);
 
     const repayStep = steps.find((s) => s.step === "repaySmartMarket");
-    expect(repayStep?.params.to).toBe(LOAN_PROVIDER);
+    expect(repayStep?.params.to).toBe(NATIVE_PROVIDER);
   });
 
   it("should handle repayAll with user data", async () => {
@@ -420,6 +448,12 @@ describe("buildSmartRepaySteps", () => {
   });
 
   it("should handle repayAll with native loan and user data", async () => {
+    mockReadContract.mockImplementation(async ({ functionName, args }) => {
+      if (functionName === "providers") {
+        return args?.[1] === LOAN_TOKEN ? NATIVE_PROVIDER : COLLATERAL_PROVIDER;
+      }
+      return 0n;
+    });
     const nativeLoanConfig = {
       ...baseSmartConfig,
       loanIsNative: true,
@@ -472,14 +506,14 @@ describe("buildSmartRepaySteps", () => {
   });
 });
 
-describe("a native pool token with no provider is not constructible", () => {
-  // The market builders guarded `loanIsNative` and `collateralIsNative` and
-  // called the guard complete. A Smart config names its native tokens
-  // `tokenAIsNative` / `tokenBIsNative`, and `supplyCollateral` sends `value`
-  // to `collateralProvider` off exactly those — so the burn was reachable
-  // through the Smart pair, one field rename away from a guard that claimed to
-  // cover it. `Moolah.providers` returns `0x0` for an unregistered pair as a
-  // successful read, and a value-bearing call to `0x0` succeeds.
+describe("a native pool token claim can never route value to the zero address", () => {
+  // `tokenAIsNative` / `tokenBIsNative` are now derived from the collateral
+  // provider's own `token(0)` / `token(1)` (see resolveProviders.ts), not
+  // trusted from the config. When the collateral provider itself resolves to
+  // `0x0` — an unregistered pair, a successful `Moolah.providers` read — the
+  // token reads answer off that same dead address and the flags are silently
+  // corrected to `false`, so a forged native claim here no longer needs a
+  // guard that rejects the build: it falls back to the ordinary path.
   const noCollateralProvider = async ({
     functionName,
     args,
@@ -502,20 +536,21 @@ describe("a native pool token with no provider is not constructible", () => {
     ["token A", { tokenAIsNative: true }],
     ["token B", { tokenBIsNative: true }],
   ] as const) {
-    it(`refuses to send ${label}'s value to the zero address`, async () => {
-      await expect(
-        buildSmartSupplyCollateralSteps(
-          {
-            chainId: 56,
-            tokenAAmount: 10n ** 18n,
-            tokenBAmount: 10n ** 18n,
-            minLpAmount: 0n,
-            walletAddress: WALLET,
-          },
-          { ...baseSmartConfig, ...flags },
-          { publicClient: mockPublicClient, network: "bsc" },
-        ),
-      ).rejects.toThrow(/zero address/);
+    it(`falls back to the ERC-20 path when a native ${label} claim has no chain provider`, async () => {
+      const steps = await buildSmartSupplyCollateralSteps(
+        {
+          chainId: 56,
+          tokenAAmount: 10n ** 18n,
+          tokenBAmount: 10n ** 18n,
+          minLpAmount: 0n,
+          walletAddress: WALLET,
+        },
+        { ...baseSmartConfig, ...flags },
+        { publicClient: mockPublicClient, network: "bsc" },
+      );
+
+      const supplyStep = steps.find((s) => s.step === "supplySmartCollateral");
+      expect(supplyStep?.params.value).toBeUndefined();
     });
   }
 
