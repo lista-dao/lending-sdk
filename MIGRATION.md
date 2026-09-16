@@ -1,8 +1,8 @@
 # Migrating to 2.0.0
 
-Twenty-one breaking changes, all in this release. They are ordered by how far
+Nineteen breaking changes, all in this release. They are ordered by how far
 they reach: most consumers are affected by the first two and nothing else, and
-items 16 onward touch only callers who import from
+items 14 onward touch only callers who import from
 `@lista-dao/moolah-lending-sdk/builders` or hand the SDK a cached config.
 
 Everything added in 2.0.0 — fixed-term completion, Smart Lending completion,
@@ -45,7 +45,7 @@ New subpaths:
 
 | Subpath                                  | Contents                                |
 | ---------------------------------------- | --------------------------------------- |
-| `@lista-dao/moolah-sdk-core/display`     | bStock display conversions (see §9)     |
+| `@lista-dao/moolah-sdk-core/display`     | bStock display conversions (see [bStock display values](#bstock-display-values) below) |
 | `@lista-dao/moolah-sdk-core/abis`        | contract ABIs, without the rest of core |
 | `@lista-dao/moolah-lending-sdk/builders` | builders, without the SDK facade        |
 
@@ -88,7 +88,7 @@ sdk.buildRepayParams({ ..., shares: 5n });          // ok
 **Why:** the contracts require exactly one to be non-zero and revert otherwise.
 Supplying both was the natural thing to do when you had both values in hand.
 
-## 8. `@morpho-org/blue-sdk` aligned to `^2.3.2`
+## 6. `@morpho-org/blue-sdk` aligned to `^2.3.2`
 
 **Who is affected:** nobody directly; it is a transitive dependency.
 
@@ -96,7 +96,7 @@ The two packages declared `^2.3.2` and `^1.1.1`, and the lockfile resolved
 **both** 1.12.7 and 2.3.2 — the same duplicate-instance hazard as §1, already
 present. The consumed surface is `MathLib` and `AdaptiveCurveIrmLib`.
 
-## 9. The `NetworkNames` enum is gone
+## 7. The `NetworkNames` enum is gone
 
 **Who is affected:** anyone importing it. It had no internal usages.
 
@@ -112,7 +112,7 @@ const n = "bsc"; // NetworkName is a string union
 It duplicated the `NetworkName` union, so keeping it meant two sources of truth
 forever.
 
-## 10. `buildSetAuthorizationSteps` only accepts known contracts
+## 8. `buildSetAuthorizationSteps` only accepts known contracts
 
 **Who is affected:** callers authorizing something other than the
 PositionManager.
@@ -129,7 +129,7 @@ buildSetAuthorizationSteps(
 );
 ```
 
-## 11. Signed authorizations expire within an hour by default
+## 9. Signed authorizations expire within an hour by default
 
 **Who is affected:** callers of `buildAuthorizationTypedData`.
 
@@ -143,7 +143,7 @@ yet. The only cancellation is to burn the nonce with a competing signed
 authorization at the same nonce. The deadline is therefore the only bound that
 actually exists, and an unbounded one is a permanent, uncancellable grant.
 
-## 12. `buildVaultMintParams` takes a vault's shape into account
+## 10. `buildVaultMintParams` takes a vault's shape into account
 
 `isNativeAsset` is gone. The builder now resolves `VaultInfo` itself (or takes
 it via `vaultInfo`) and behaves accordingly:
@@ -166,7 +166,7 @@ the headroom costs nothing.
 
 ---
 
-## 13. `buildLiquidateParams` refuses markets the liquidator will not serve
+## 11. `buildLiquidateParams` refuses markets the liquidator will not serve
 
 The public liquidator keeps an **admin-curated allowlist of markets** and
 reverts `NotWhitelisted()` for the rest. The builder now reads
@@ -185,7 +185,7 @@ UI can hide the action instead of offering a button that fails.
 
 ---
 
-## 14. The signature path enforces the same allowlist as the transaction path
+## 12. The signature path enforces the same allowlist as the transaction path
 
 `buildAuthorizationTypedData` and `buildSetAuthorizationWithSigParams` now
 refuse a **grant** to any address the address book does not name, exactly as
@@ -206,7 +206,7 @@ it was written.
 
 ---
 
-## 15. Over-sized approvals are put back where they were found
+## 13. Over-sized approvals are put back where they were found
 
 `buildRepayParams`, `buildSmartRepayParams`, `buildBrokerRepayParams`,
 `buildBrokerRepayAllParams`, `buildLiquidateParams` and `buildVaultMintParams`
@@ -227,7 +227,7 @@ common case.
 
 ---
 
-## 16. A supplied `marketInfo` / `smartConfig` / `vaultInfo` is checked against the chain
+## 14. A supplied `marketInfo` / `smartConfig` / `vaultInfo` is checked against the chain
 
 The config overrides are a caching hook and they stay. What the SDK checks is
 what it cannot recover by reading the chain: that the config describes the
@@ -237,7 +237,7 @@ config's asset is the one the vault names. Pass `trustedConfig: true` to skip
 it.
 
 **Not checked: the provider fields.** They were, in an earlier draft of this
-release. They are not any more, because #19 made them inert — every builder
+release. They are not any more, because #17 made them inert — every builder
 reads the provider from the chain itself — and asserting on an inert field can
 only produce false rejections. During a provider migration the check would have
 refused every correctly-cached config, including the ones building an exit,
@@ -248,11 +248,11 @@ which is the exact failure mode resolving was chosen to avoid.
 chain, so it takes `(marketId, config)` only. `assertVaultConfigProvider` is now
 `assertVaultConfigAsset` and takes `(vaultAddress, config, publicClient)`.
 
-This applies to the `MoolahSDK` methods. See #19 for what the builders do.
+This applies to the `MoolahSDK` methods. See #17 for what the builders do.
 
 ---
 
-## 17. The broker builders are async, and verified on every path
+## 15. The broker builders are async, and verified on every path
 
 `buildBrokerBorrowSteps`, `buildConvertDynamicToFixedSteps` and
 `buildBrokerRefinanceMaturedSteps` now take `(params, publicClient, network)`
@@ -270,7 +270,7 @@ transaction, and the distinction had nothing behind it.
 
 ---
 
-## 18. A supplied config must describe the market you named
+## 16. A supplied config must describe the market you named
 
 `assertMarketConfigMatchesMarket` (formerly `assertMarketConfigProviders`)
 derives the market id from the config's own params and requires it to equal the
@@ -292,7 +292,7 @@ never shown.
 
 ---
 
-## 19. The builders resolve providers from the chain
+## 17. The builders resolve providers from the chain
 
 `loanProvider` and `collateralProvider` on a supplied config are no longer used.
 Every builder that takes a market or vault config reads them from
@@ -360,7 +360,7 @@ those checks once, where your config enters your process.
 
 ---
 
-## 20. `MoolahSDKConfig.rpcUrls` is optional, and an empty config is rejected
+## 18. `MoolahSDKConfig.rpcUrls` is optional, and an empty config is rejected
 
 `rpcUrls` was required even for callers who supply `publicClients` for every
 chain they touch — `getPublicClient` returns a supplied client without ever
@@ -385,7 +385,7 @@ construction now throws — supply the clients or the URLs you actually use.
 
 ---
 
-## 21. A raw number is read as the number you wrote, in parsing and in arithmetic
+## 19. A raw number is read as the number you wrote, in parsing and in arithmetic
 
 `parse` converted a number with `value.toFixed(decimal)`, which at 18 decimal
 places does not format the number — it expands the double. `1234.56` became
