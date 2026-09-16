@@ -25,7 +25,8 @@
     "check:packaging": "node scripts/check-packaging.mjs",
     "check:consumer": "node scripts/check-consumer.mjs",
     "parity:check": "node scripts/parity-check.mjs",
-    "read:surface": "node scripts/read-surface.mjs"
+    "read:surface": "node scripts/read-surface.mjs",
+    "testnet:e2e": "node scripts/testnet-e2e.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.1",
