@@ -95,7 +95,11 @@ async function discover() {
   MARKET = plain?.id;
   SMART_MARKET = smart?.id;
 
-  const vaults = await sdk.getVaultList({ chain: "bsc", page: 1, pageSize: 20 });
+  const vaults = await sdk.getVaultList({
+    chain: "bsc",
+    page: 1,
+    pageSize: 20,
+  });
   VAULT = (vaults?.list ?? [])[0]?.address ?? (vaults?.list ?? [])[0]?.vault;
 
   record(
@@ -144,13 +148,19 @@ async function apiReads() {
   await probe(
     "getVaultMetadata describes a specific vault",
     () => sdk.getVaultMetadata(VAULT),
-    (d) => ({ ok: d != null && Object.keys(d).length > 0, detail: `${Object.keys(d ?? {}).length} fields` }),
+    (d) => ({
+      ok: d != null && Object.keys(d).length > 0,
+      detail: `${Object.keys(d ?? {}).length} fields`,
+    }),
   );
 
   await probe(
     "getMarketInfo describes a specific market",
     () => sdk.getMarketInfo(CHAIN, MARKET),
-    (d) => ({ ok: d != null && Object.keys(d).length > 0, detail: `${Object.keys(d ?? {}).length} fields` }),
+    (d) => ({
+      ok: d != null && Object.keys(d).length > 0,
+      detail: `${Object.keys(d ?? {}).length} fields`,
+    }),
   );
 
   await probe(
@@ -189,7 +199,10 @@ async function marketReads() {
         isAddress(d.params?.collateralToken) &&
         typeof d.params?.lltv === "bigint" &&
         d.params.lltv > 0n;
-      return { ok, detail: `lltv ${d?.params?.lltv}, irm ${String(d?.params?.irm).slice(0, 10)}…` };
+      return {
+        ok,
+        detail: `lltv ${d?.params?.lltv}, irm ${String(d?.params?.irm).slice(0, 10)}…`,
+      };
     },
   );
 
@@ -313,13 +326,19 @@ async function brokerReads() {
   await probe(
     "getBrokerUserPositions returns a position set, empty or not",
     () => sdk.getBrokerUserPositions(CHAIN, broker, PROBE_WALLET),
-    (d) => ({ ok: d !== undefined, detail: `${d?.positions?.length ?? 0} positions` }),
+    (d) => ({
+      ok: d !== undefined,
+      detail: `${d?.positions?.length ?? 0} positions`,
+    }),
   );
 
   await probe(
     "getMarketUserDataWithBroker folds the broker legs into the position",
     () => sdk.getMarketUserDataWithBroker(CHAIN, MARKET, PROBE_WALLET, broker),
-    (d) => ({ ok: isDecimal(d?.borrowed), detail: `borrowed ${d?.borrowed?.toFixed?.(6)}` }),
+    (d) => ({
+      ok: isDecimal(d?.borrowed),
+      detail: `borrowed ${d?.borrowed?.toFixed?.(6)}`,
+    }),
   );
 }
 
@@ -348,7 +367,10 @@ async function liquidationReads() {
   await probe(
     "isLiquidationMarketEnabled answers from the liquidator's allowlist",
     () => sdk.isLiquidationMarketEnabled(CHAIN, marketId),
-    (d) => ({ ok: typeof d === "boolean", detail: `${marketId?.slice?.(0, 12)}… -> ${d}` }),
+    (d) => ({
+      ok: typeof d === "boolean",
+      detail: `${marketId?.slice?.(0, 12)}… -> ${d}`,
+    }),
   );
 
   await probe(
@@ -373,13 +395,15 @@ async function simulateReads() {
         chainId: CHAIN,
         marketId: MARKET,
         walletAddress: PROBE_WALLET,
-        collateralAmount: 1,
-        borrowAmount: 1,
+        borrowAssets: 1n,
       }),
-    (d) => ({
-      ok: d != null && Object.keys(d).length > 0,
-      detail: Object.keys(d ?? {}).slice(0, 6).join(", "),
-    }),
+    (d) => {
+      const moved = before != null && d.simulation.borrowed.gt(before.borrowed);
+      return {
+        ok: moved,
+        detail: `borrowed ${before?.borrowed?.toString()} -> ${d.simulation.borrowed.toString()}`,
+      };
+    },
   );
 
   await probe(
@@ -389,13 +413,15 @@ async function simulateReads() {
         chainId: CHAIN,
         marketId: MARKET,
         walletAddress: PROBE_WALLET,
-        repayAmount: 1,
-        withdrawAmount: 0,
+        repayAssets: 1n,
       }),
-    (d) => ({
-      ok: d != null && Object.keys(d).length > 0,
-      detail: Object.keys(d ?? {}).slice(0, 6).join(", "),
-    }),
+    (d) => {
+      const moved = before != null && d.simulation.borrowed.lt(before.borrowed);
+      return {
+        ok: moved,
+        detail: `borrowed ${before?.borrowed?.toString()} -> ${d.simulation.borrowed.toString()}`,
+      };
+    },
   );
 
   if (before) {

@@ -294,16 +294,27 @@ describe("a vault's provider decides how it is entered, and how it is left", () 
     provider: ZERO,
   } as unknown as VaultInfo;
 
+  // `isNative` is now derived from the resolved provider matching the
+  // network's nativeProvider singleton, not trusted from the config — see
+  // resolveProviders.ts. A genuinely native-provider vault has to resolve to
+  // that real address, not an arbitrary one.
+  const NATIVE_PROVIDER = getContractAddress("bsc", "nativeProvider");
+
   it("refuses mint only for a native-provider vault", async () => {
     await expect(
       buildVaultMintSteps(
         { chainId: 56, vaultAddress: VAULT, shares: 100n, walletAddress: USER },
-        { ...base, isNative: true, isProvider: true, provider: IMPOSTOR },
+        {
+          ...base,
+          isNative: true,
+          isProvider: true,
+          provider: NATIVE_PROVIDER,
+        },
         {
           publicClient: {
             readContract: vi.fn(
               async ({ functionName }: { functionName: string }) =>
-                functionName === "provider" ? IMPOSTOR : 0n,
+                functionName === "provider" ? NATIVE_PROVIDER : 0n,
             ),
           } as unknown as PublicClient,
           network: "bsc",
@@ -322,12 +333,17 @@ describe("a vault's provider decides how it is entered, and how it is left", () 
           walletAddress: USER,
           allowProviderRouting: true,
         },
-        { ...base, isNative: true, isProvider: true, provider: IMPOSTOR },
+        {
+          ...base,
+          isNative: true,
+          isProvider: true,
+          provider: NATIVE_PROVIDER,
+        },
         {
           publicClient: {
             readContract: vi.fn(
               async ({ functionName }: { functionName: string }) =>
-                functionName === "provider" ? IMPOSTOR : 0n,
+                functionName === "provider" ? NATIVE_PROVIDER : 0n,
             ),
           } as unknown as PublicClient,
           network: "bsc",

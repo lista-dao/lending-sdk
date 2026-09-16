@@ -334,6 +334,18 @@ export async function buildWithdrawSteps(
   const onBehalf = params.onBehalf ?? params.walletAddress;
   const receiver = params.receiver ?? onBehalf;
 
+  // A zero-valued withdrawal encodes cleanly and settles nothing — the
+  // failure mode with no signal, same as the vault's (see
+  // buildVaultWithdrawSteps). Reachable by omitting both `assets` and
+  // `withdrawAll`, or by `withdrawAll` against a position with nothing
+  // withdrawable.
+  if (params.assets <= 0n) {
+    throw new Error(
+      "buildWithdrawSteps: assets must be greater than zero — there is " +
+        "nothing to withdraw",
+    );
+  }
+
   const contractAddress =
     marketInfo.collateralProvider !== zeroAddress
       ? marketInfo.collateralProvider

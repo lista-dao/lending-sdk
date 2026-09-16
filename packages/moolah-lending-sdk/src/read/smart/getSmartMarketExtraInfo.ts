@@ -19,7 +19,8 @@ import { classifyIrm } from "../shared/irm.js";
 import { isContractLevelFailure } from "../../rpcErrors.js";
 
 const WEI_VALUE = 10n ** 18n;
-const NATIVE_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
+export const NATIVE_ADDRESS =
+  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
 
 /**
  * Get Smart Market extra info from chain

@@ -3,6 +3,7 @@ import { zeroAddress } from "viem";
 import {
   MOOLAH_ABI,
   MOOLAH_VAULT_ABI,
+  SMART_PROVIDER_ABI,
   getContractAddress,
   type NetworkName,
   type VaultInfo,
@@ -11,24 +12,33 @@ import {
 } from "@lista-dao/moolah-sdk-core";
 import { isContractLevelFailure } from "./rpcErrors.js";
 import { marketIdOf } from "./builders/sharePricing.js";
+import { NATIVE_ADDRESS } from "./read/smart/getSmartMarketExtraInfo.js";
 
 /**
- * Take the chain's word for the provider, not the config's.
+ * Take the chain's word for the provider — and for whether it's native.
  *
  * `loanProvider` and `collateralProvider` are the addresses this SDK approves
  * tokens to and sends native value to. Everywhere else they are read from
  * `Moolah.providers`, which is what the invariant in `configTrust.ts` rests on
  * — and a caller-supplied config was the one way round it.
  *
- * Verifying the supplied value was the obvious fix and is the worse one. A
- * verify has a failure mode: it must decide what to do when the chain
- * disagrees, which turns a provider migration into rejected builds for anyone
- * holding a correctly-cached config, and it needs an escape hatch that will be
- * set to true by the first caller who reads a stack trace. Resolving has no
- * failure mode at all. The supplied fields simply stop being load-bearing: a
- * stale config is silently corrected, a forged one is silently ignored, and
- * the invariant becomes true by construction rather than by assertion.
- *
+ * The `*IsNative` flags used to stay as the config gave them, guarded by a
+ * check that only caught one case: a flag claiming native routing into a
+ * provider that resolved to the zero address. It missed the case where the
+ * provider resolves to a real, ordinary ERC-20 provider for a market that
+ * isn't native at all — a stale or forged flag there skips the approval step
+ * entirely and attaches `value` to a call the resolved provider was never
+ * built to receive. The read path already knows how to tell native from not:
+ * `getMarketExtraInfo`/`getSmartMarketExtraInfo` derive `loanIsNative` /
+ * `collateralIsNative` by comparing the resolved provider against the
+ * network's singleton `nativeProvider`, and derive `tokenAIsNative` /
+ * `tokenBIsNative` by comparing the Smart provider's own `token(0)` /
+ * `token(1)` against the native sentinel address. Doing the same here makes
+ * every flag chain-derived instead of caller-supplied, the same treatment
+ * already given to the provider addresses themselves — and it subsumes the
+ * old zero-address guard for free: a provider that resolves to `0x0` can
+ * never equal the (non-zero) `nativeProvider` singleton, so it is never
+ * derived as native, and the value-bearing branch is never taken.
  */
 export async function withResolvedProviders<
   T extends Pick<
@@ -37,6 +47,7 @@ export async function withResolvedProviders<
   >,
 >(config: T, publicClient: PublicClient, network: NetworkName): Promise<T> {
   const moolah = getContractAddress(network, "moolah");
+  const nativeProvider = getContractAddress(network, "nativeProvider");
   const marketId = marketIdOf(config.params);
 
   const [loanProvider, collateralProvider] = await Promise.all([
@@ -54,77 +65,56 @@ export async function withResolvedProviders<
     }) as Promise<Address>,
   ]);
 
-  // The addresses only — the `*IsNative` flags stay as the config gave them.
-  // That is safe *because* of the guard below and not otherwise: an earlier
-  // version of this comment argued a forged flag could only send native value
-  // to the real provider, which either works or reverts. It missed the case
-  // where the real provider is the zero address. `Moolah.providers` returns
-  // `0x0` for any pair with no provider registered — a successful read, not a
-  // throw — and the native branches take the provider as the call target with
-  // no zero guard, so the step would carry the full amount as `value` to
-  // `0x0`, where it succeeds and the funds are gone. Resolution broke the
-  // pairing the flag used to rely on; this restores it.
-  //
-  // All four flags, not two. The first version of this guard covered
-  // `loanIsNative` and `collateralIsNative` and stopped there, because those
-  // are the two fields on `WriteMarketConfig` and that was the file being
-  // edited. A Smart config names its native tokens `tokenAIsNative` /
-  // `tokenBIsNative` instead, and `buildSmartSupplyCollateralSteps` sends
-  // `value` to `collateralProvider` off exactly those — so the same burn was
-  // reachable through the Smart pair, one rename away from a guard that
-  // claimed to be complete.
-  const native = { ...config } as Partial<WriteMarketConfig> &
-    Partial<WriteSmartMarketConfig>;
+  const resolved: Partial<WriteMarketConfig> & Partial<WriteSmartMarketConfig> =
+    { loanIsNative: loanProvider === nativeProvider };
 
-  const guard = (
-    isNative: boolean | undefined,
-    provider: Address,
-    what: string,
-    token: Address,
-  ) => {
-    if (!isNative || provider !== zeroAddress) return;
-    throw new Error(
-      `withResolvedProviders: the config says ${what} is native, but Moolah ` +
-        `has no provider registered for ${token} on this market. A native ` +
-        `step would send its value to the zero address, where it succeeds and ` +
-        `the funds are gone.`,
-    );
-  };
+  // `collateralIsNative` only exists on a plain market config — a Smart
+  // config's collateral leg is always the provider's own LP wrapper, never
+  // itself native, so it carries no such field to overwrite.
+  if ("collateralIsNative" in config) {
+    resolved.collateralIsNative = collateralProvider === nativeProvider;
+  }
 
-  guard(
-    native.loanIsNative,
-    loanProvider,
-    "the loan token",
-    config.params.loanToken,
-  );
-  guard(
-    native.collateralIsNative,
-    collateralProvider,
-    "the collateral",
-    config.params.collateralToken,
-  );
-  // Both pool tokens of a Smart market are supplied through the *collateral*
-  // provider, so that is the address either flag puts `value` behind.
-  guard(
-    native.tokenAIsNative,
-    collateralProvider,
-    "pool token A",
-    config.params.collateralToken,
-  );
-  guard(
-    native.tokenBIsNative,
-    collateralProvider,
-    "pool token B",
-    config.params.collateralToken,
-  );
+  // A Smart config names its native pool tokens `tokenAIsNative` /
+  // `tokenBIsNative` instead, resolved against the *pair's own* token
+  // addresses rather than the provider identity — the same two extra reads
+  // `getSmartMarketExtraInfo` and `assertSmartConfigTokens` already make.
+  if ("tokenAIsNative" in config || "tokenBIsNative" in config) {
+    const [tokenA, tokenB] = await Promise.all([
+      publicClient.readContract({
+        address: collateralProvider,
+        abi: SMART_PROVIDER_ABI,
+        functionName: "token",
+        args: [0n],
+      }) as Promise<Address>,
+      publicClient.readContract({
+        address: collateralProvider,
+        abi: SMART_PROVIDER_ABI,
+        functionName: "token",
+        args: [1n],
+      }) as Promise<Address>,
+    ]);
+    resolved.tokenAIsNative = tokenA === NATIVE_ADDRESS;
+    resolved.tokenBIsNative = tokenB === NATIVE_ADDRESS;
+  }
 
-  return { ...config, loanProvider, collateralProvider };
+  return { ...config, loanProvider, collateralProvider, ...resolved };
 }
 
-/** As above, for a vault: the vault names its own provider. */
+/**
+ * As above, for a vault: the vault names its own provider, and whether that
+ * provider is native is derived the same way `getVaultInfo` derives it —
+ * comparing the resolved provider against the network's singleton
+ * `nativeProvider` — rather than trusted from a caller-supplied `isNative`.
+ */
 export async function withResolvedVaultProvider<
   T extends Pick<VaultInfo, "provider">,
->(vaultAddress: Address, config: T, publicClient: PublicClient): Promise<T> {
+>(
+  vaultAddress: Address,
+  config: T,
+  publicClient: PublicClient,
+  network: NetworkName,
+): Promise<T> {
   const provider = ((await publicClient
     .readContract({
       address: vaultAddress,
@@ -139,7 +129,14 @@ export async function withResolvedVaultProvider<
       return zeroAddress;
     })) ?? zeroAddress) as Address;
 
-  return { ...config, provider } as T;
+  const resolved: Partial<VaultInfo> = { provider };
+  if ("isProvider" in config) resolved.isProvider = provider !== zeroAddress;
+  if ("isNative" in config) {
+    resolved.isNative =
+      provider === getContractAddress(network, "nativeProvider");
+  }
+
+  return { ...config, ...resolved };
 }
 
 /** Re-exported for callers building steps without the facade. */
