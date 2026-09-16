@@ -1,8 +1,14 @@
 export { Decimal } from "./utils/decimal.js";
 export * from "./utils/fraction.js";
 export { getNativeCurrencySymbol } from "./utils/network.js";
-export { getApiChain, getListaApiUrl, LISTA_API_URLS } from "./utils/apiChain.js";
-export type { ApiChain, ApiEnv } from "./utils/apiChain.js";
+export {
+  getApiChain,
+  getApiUrlForNetwork,
+  LISTA_API_URL,
+} from "./utils/apiChain.js";
+export type { ApiChain } from "./utils/apiChain.js";
+export { LENDING_ZONE, hasZone, isSmartLendingZone } from "./utils/zones.js";
+export type { LendingZone } from "./utils/zones.js";
 
 export * from "./types/common.js";
 export * from "./types/vault.js";
@@ -29,6 +35,11 @@ export * from "./calculations/loan.js";
 export * from "./calculations/interestRate.js";
 export * from "./calculations/position.js";
 export * from "./calculations/stablepool.js";
+export * from "./calculations/liquidation.js";
+
+// NOTE: ./display is deliberately NOT re-exported here. Display-space values
+// must never reach a builder; they are reachable only from the
+// "@lista-dao/moolah-sdk-core/display" subpath.
 
 export * from "./simulate/index.js";
 

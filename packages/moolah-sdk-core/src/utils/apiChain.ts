@@ -1,29 +1,21 @@
 import type { NetworkName } from "../contracts/types.js";
 
-export type ApiChain = "bsc" | "ethereum"; // | 'bscTest'
-
-/** API environment - test requires VPN (Lista internal only), prod is public */
-export type ApiEnv = "test" | "prod";
+export type ApiChain = "bsc" | "ethereum";
 
 /**
- * Built-in Lista API URLs
- * - prod: Public, for third-party and Lista production
- * - test: Requires VPN, for Lista development only
+ * Built-in Lista production API URL.
  */
-export const LISTA_API_URLS: Record<ApiEnv, string> = {
-  prod: "https://api.lista.org",
-  test: "https://api.ltqa.io",
-};
+export const LISTA_API_URL = "https://api.lista.org";
 
-export function getListaApiUrl(env: ApiEnv): string {
-  return LISTA_API_URLS[env];
+/** Default API host. */
+export function getApiUrlForNetwork(network: NetworkName): string {
+  void network;
+  return LISTA_API_URL;
 }
 
 const NETWORK_TO_API_CHAIN: Record<NetworkName, ApiChain> = {
   bsc: "bsc",
   ethereum: "ethereum",
-  // bscTestnet: 'bscTest',
-  // sepolia: 'ethereum',
 };
 
 export function getApiChain(network: NetworkName): ApiChain {

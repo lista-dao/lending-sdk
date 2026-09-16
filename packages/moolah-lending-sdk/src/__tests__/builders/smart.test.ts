@@ -44,10 +44,30 @@ const baseSmartConfig: WriteSmartMarketConfig = {
   tokenBInfo: { address: TOKEN_B, decimals: 18, symbol: "TOKB" },
 };
 
+/**
+ * Answers by function, not with one blanket value. The builders resolve
+ * `providers` from the chain now, so a mock returning `0n` for every read hands
+ * back a number where an address belongs.
+ */
+const chainSaying =
+  (rest: unknown = 0n) =>
+  async ({
+    functionName,
+    args,
+  }: {
+    functionName: string;
+    args?: readonly unknown[];
+  }) => {
+    if (functionName === "providers") {
+      return args?.[1] === LOAN_TOKEN ? LOAN_PROVIDER : COLLATERAL_PROVIDER;
+    }
+    return rest;
+  };
+
 describe("buildSmartSupplyDexLpSteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(chainSaying());
   });
 
   it("should build supply LP steps with approval", async () => {
@@ -87,7 +107,7 @@ describe("buildSmartSupplyDexLpSteps", () => {
   });
 
   it("should skip approve when allowance is sufficient", async () => {
-    mockReadContract.mockResolvedValue(10000n * 10n ** 18n);
+    mockReadContract.mockImplementation(chainSaying(10000n * 10n ** 18n));
 
     const steps = await buildSmartSupplyDexLpSteps(
       {
@@ -107,7 +127,7 @@ describe("buildSmartSupplyDexLpSteps", () => {
 describe("buildSmartSupplyCollateralSteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(chainSaying());
   });
 
   it("should build supply collateral steps with both token approvals", async () => {
@@ -177,14 +197,16 @@ describe("buildSmartSupplyCollateralSteps", () => {
 });
 
 describe("buildSmartWithdrawDexLpSteps", () => {
-  it("should build withdraw LP step", () => {
-    const steps = buildSmartWithdrawDexLpSteps(
+  it("should build withdraw LP step", async () => {
+    const steps = await buildSmartWithdrawDexLpSteps(
       {
         chainId: 56,
         lpAmount: 500n * 10n ** 18n,
         walletAddress: WALLET,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps).toHaveLength(1);
@@ -193,9 +215,9 @@ describe("buildSmartWithdrawDexLpSteps", () => {
     expect(steps[0].params.to).toBe(COLLATERAL_PROVIDER);
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Address;
-    const steps = buildSmartWithdrawDexLpSteps(
+    const steps = await buildSmartWithdrawDexLpSteps(
       {
         chainId: 56,
         lpAmount: 500n,
@@ -203,6 +225,8 @@ describe("buildSmartWithdrawDexLpSteps", () => {
         receiver,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps[0].params.args).toContain(receiver);
@@ -210,8 +234,8 @@ describe("buildSmartWithdrawDexLpSteps", () => {
 });
 
 describe("buildSmartWithdrawCollateralSteps", () => {
-  it("should build withdraw collateral step", () => {
-    const steps = buildSmartWithdrawCollateralSteps(
+  it("should build withdraw collateral step", async () => {
+    const steps = await buildSmartWithdrawCollateralSteps(
       {
         chainId: 56,
         tokenAAmount: 300n,
@@ -220,6 +244,8 @@ describe("buildSmartWithdrawCollateralSteps", () => {
         walletAddress: WALLET,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps).toHaveLength(1);
@@ -227,9 +253,9 @@ describe("buildSmartWithdrawCollateralSteps", () => {
     expect(steps[0].params.functionName).toBe("withdrawCollateralImbalance");
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0xcccccccccccccccccccccccccccccccccccccccc" as Address;
-    const steps = buildSmartWithdrawCollateralSteps(
+    const steps = await buildSmartWithdrawCollateralSteps(
       {
         chainId: 56,
         tokenAAmount: 300n,
@@ -239,14 +265,16 @@ describe("buildSmartWithdrawCollateralSteps", () => {
         receiver,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps[0].params.args).toContain(receiver);
   });
 
-  it("should use onBehalf if provided", () => {
+  it("should use onBehalf if provided", async () => {
     const onBehalf = "0xdddddddddddddddddddddddddddddddddddddddd" as Address;
-    const steps = buildSmartWithdrawCollateralSteps(
+    const steps = await buildSmartWithdrawCollateralSteps(
       {
         chainId: 56,
         tokenAAmount: 300n,
@@ -256,6 +284,8 @@ describe("buildSmartWithdrawCollateralSteps", () => {
         onBehalf,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps[0].params.args).toContain(onBehalf);
@@ -263,8 +293,8 @@ describe("buildSmartWithdrawCollateralSteps", () => {
 });
 
 describe("buildSmartWithdrawCollateralFixedSteps", () => {
-  it("should build withdraw collateral fixed step", () => {
-    const steps = buildSmartWithdrawCollateralFixedSteps(
+  it("should build withdraw collateral fixed step", async () => {
+    const steps = await buildSmartWithdrawCollateralFixedSteps(
       {
         chainId: 56,
         lpAmount: 500n,
@@ -273,6 +303,8 @@ describe("buildSmartWithdrawCollateralFixedSteps", () => {
         walletAddress: WALLET,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps).toHaveLength(1);
@@ -280,9 +312,9 @@ describe("buildSmartWithdrawCollateralFixedSteps", () => {
     expect(steps[0].params.functionName).toBe("withdrawCollateral");
   });
 
-  it("should use receiver if provided", () => {
+  it("should use receiver if provided", async () => {
     const receiver = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" as Address;
-    const steps = buildSmartWithdrawCollateralFixedSteps(
+    const steps = await buildSmartWithdrawCollateralFixedSteps(
       {
         chainId: 56,
         lpAmount: 500n,
@@ -292,14 +324,16 @@ describe("buildSmartWithdrawCollateralFixedSteps", () => {
         receiver,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps[0].params.args).toContain(receiver);
   });
 
-  it("should use onBehalf if provided", () => {
+  it("should use onBehalf if provided", async () => {
     const onBehalf = "0xffffffffffffffffffffffffffffffffffffffff" as Address;
-    const steps = buildSmartWithdrawCollateralFixedSteps(
+    const steps = await buildSmartWithdrawCollateralFixedSteps(
       {
         chainId: 56,
         lpAmount: 500n,
@@ -309,6 +343,8 @@ describe("buildSmartWithdrawCollateralFixedSteps", () => {
         onBehalf,
       },
       baseSmartConfig,
+
+      { publicClient: mockPublicClient, network: "bsc" },
     );
 
     expect(steps[0].params.args).toContain(onBehalf);
@@ -318,7 +354,7 @@ describe("buildSmartWithdrawCollateralFixedSteps", () => {
 describe("buildSmartRepaySteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    mockReadContract.mockImplementation(chainSaying());
   });
 
   it("should build repay steps with approval", async () => {
@@ -433,5 +469,131 @@ describe("buildSmartRepaySteps", () => {
     const repayStep = steps.find((s) => s.step === "repaySmartMarket");
     // Should use moolah contract address instead of zero address
     expect(repayStep?.params.to).not.toBe(zeroAddress);
+  });
+});
+
+describe("a native pool token with no provider is not constructible", () => {
+  // The market builders guarded `loanIsNative` and `collateralIsNative` and
+  // called the guard complete. A Smart config names its native tokens
+  // `tokenAIsNative` / `tokenBIsNative`, and `supplyCollateral` sends `value`
+  // to `collateralProvider` off exactly those — so the burn was reachable
+  // through the Smart pair, one field rename away from a guard that claimed to
+  // cover it. `Moolah.providers` returns `0x0` for an unregistered pair as a
+  // successful read, and a value-bearing call to `0x0` succeeds.
+  const noCollateralProvider = async ({
+    functionName,
+    args,
+  }: {
+    functionName: string;
+    args?: readonly unknown[];
+  }) => {
+    if (functionName === "providers") {
+      return args?.[1] === LOAN_TOKEN ? LOAN_PROVIDER : zeroAddress;
+    }
+    return 0n;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(noCollateralProvider);
+  });
+
+  for (const [label, flags] of [
+    ["token A", { tokenAIsNative: true }],
+    ["token B", { tokenBIsNative: true }],
+  ] as const) {
+    it(`refuses to send ${label}'s value to the zero address`, async () => {
+      await expect(
+        buildSmartSupplyCollateralSteps(
+          {
+            chainId: 56,
+            tokenAAmount: 10n ** 18n,
+            tokenBAmount: 10n ** 18n,
+            minLpAmount: 0n,
+            walletAddress: WALLET,
+          },
+          { ...baseSmartConfig, ...flags },
+          { publicClient: mockPublicClient, network: "bsc" },
+        ),
+      ).rejects.toThrow(/zero address/);
+    });
+  }
+
+  it("still builds when neither pool token is native", async () => {
+    // The guard is about `value`, not about the provider being zero — an
+    // ERC-20 supply to a dead provider wastes an approval and reverts, which
+    // is recoverable. Throwing here too would reject configs for markets whose
+    // provider is simply not registered yet.
+    const steps = await buildSmartSupplyCollateralSteps(
+      {
+        chainId: 56,
+        tokenAAmount: 10n ** 18n,
+        tokenBAmount: 10n ** 18n,
+        minLpAmount: 0n,
+        walletAddress: WALLET,
+      },
+      baseSmartConfig,
+      { publicClient: mockPublicClient, network: "bsc" },
+    );
+    expect(steps.some((s) => s.step === "supplySmartCollateral")).toBe(true);
+  });
+});
+
+describe("the Smart exits resolve their provider too", () => {
+  // Resolving the entries and not the exits is strictly worse than resolving
+  // neither: the collateral goes in through the provider the chain names and
+  // the withdrawal asks the one the cached config remembers. Nothing burns —
+  // the position simply cannot be left.
+  const STALE = "0x000000000000000000000000000000000000dead" as Address;
+  const staleConfig = {
+    ...baseSmartConfig,
+    collateralProvider: STALE,
+    loanProvider: STALE,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(chainSaying());
+  });
+
+  const deps = { publicClient: mockPublicClient, network: "bsc" as const };
+
+  it("withdrawDexLp targets the chain's provider, not the config's", async () => {
+    const [step] = await buildSmartWithdrawDexLpSteps(
+      { chainId: 56, lpAmount: 1000n, walletAddress: WALLET },
+      staleConfig,
+      deps,
+    );
+    expect(step.params.to).toBe(COLLATERAL_PROVIDER);
+  });
+
+  it("withdrawCollateral targets the chain's provider", async () => {
+    const [step] = await buildSmartWithdrawCollateralSteps(
+      {
+        chainId: 56,
+        tokenAAmount: 1n,
+        tokenBAmount: 1n,
+        maxLpBurn: 10n,
+        walletAddress: WALLET,
+      },
+      staleConfig,
+      deps,
+    );
+    expect(step.params.to).toBe(COLLATERAL_PROVIDER);
+  });
+
+  it("withdrawCollateralFixed targets the chain's provider", async () => {
+    const [step] = await buildSmartWithdrawCollateralFixedSteps(
+      {
+        chainId: 56,
+        lpAmount: 1000n,
+        minTokenAAmount: 0n,
+        minTokenBAmount: 0n,
+        walletAddress: WALLET,
+      },
+      staleConfig,
+      deps,
+    );
+    expect(step.params.to).toBe(COLLATERAL_PROVIDER);
   });
 });

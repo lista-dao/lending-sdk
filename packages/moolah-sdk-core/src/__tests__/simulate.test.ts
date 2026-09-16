@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { Decimal } from "../utils/decimal.js";
-import { simulateVaultDeposit, simulateVaultWithdraw } from "../simulate/vault.js";
+import {
+  simulateVaultDeposit,
+  simulateVaultWithdraw,
+} from "../simulate/vault.js";
 import {
   simulateMarketBorrow,
   simulateMarketRepay,

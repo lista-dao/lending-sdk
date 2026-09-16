@@ -1,9 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Address, PublicClient } from "viem";
-import {
-  Decimal,
-  type SmartMarketExtraInfo,
-} from "@lista-dao/moolah-sdk-core";
+import { Decimal, type SmartMarketExtraInfo } from "@lista-dao/moolah-sdk-core";
 
 import { getSmartMarketUserData } from "../../../read/smart/getSmartMarketUserData.js";
 

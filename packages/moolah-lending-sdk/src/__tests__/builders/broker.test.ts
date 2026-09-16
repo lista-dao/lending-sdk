@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { getContractAddress } from "@lista-dao/moolah-sdk-core";
 import type { PublicClient, Address } from "viem";
 import {
   buildBrokerBorrowSteps,
@@ -11,16 +12,34 @@ const mockPublicClient = {
 } as unknown as PublicClient;
 
 const BROKER_ADDRESS = "0x1111111111111111111111111111111111111111" as Address;
+const MARKET_ID =
+  "0x058073a21fea8dd3aa250713a56ad7526cc27c8f74e85f5433821c6fe5d03e1b" as const;
 const LOAN_TOKEN = "0x2222222222222222222222222222222222222222" as Address;
 const WALLET = "0x3333333333333333333333333333333333333333" as Address;
 
+const brokerAware = async ({ functionName }: { functionName: string }) => {
+  if (functionName === "MARKET_ID") return MARKET_ID;
+  if (functionName === "MOOLAH") return getContractAddress("bsc", "moolah");
+  if (functionName === "brokers") return BROKER_ADDRESS;
+  return 0n;
+};
+
 describe("buildBrokerBorrowSteps", () => {
-  it("should build borrow step without termId", () => {
-    const steps = buildBrokerBorrowSteps({
-      chainId: 56,
-      brokerAddress: BROKER_ADDRESS,
-      amount: 1000n * 10n ** 18n,
-    });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockReadContract.mockImplementation(brokerAware);
+  });
+
+  it("should build borrow step without termId", async () => {
+    const steps = await buildBrokerBorrowSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        amount: 1000n * 10n ** 18n,
+      },
+      mockPublicClient,
+      "bsc",
+    );
 
     expect(steps).toHaveLength(1);
     expect(steps[0].step).toBe("brokerBorrow");
@@ -30,13 +49,17 @@ describe("buildBrokerBorrowSteps", () => {
     expect(steps[0].params.args[0]).toBe(1000n * 10n ** 18n);
   });
 
-  it("should build borrow step with termId", () => {
-    const steps = buildBrokerBorrowSteps({
-      chainId: 56,
-      brokerAddress: BROKER_ADDRESS,
-      amount: 1000n * 10n ** 18n,
-      termId: 1n,
-    });
+  it("should build borrow step with termId", async () => {
+    const steps = await buildBrokerBorrowSteps(
+      {
+        chainId: 56,
+        brokerAddress: BROKER_ADDRESS,
+        amount: 1000n * 10n ** 18n,
+        termId: 1n,
+      },
+      mockPublicClient,
+      "bsc",
+    );
 
     expect(steps).toHaveLength(1);
     expect(steps[0].params.args).toHaveLength(2);
@@ -44,12 +67,16 @@ describe("buildBrokerBorrowSteps", () => {
     expect(steps[0].params.args[1]).toBe(1n);
   });
 
-  it("should handle string chainId", () => {
-    const steps = buildBrokerBorrowSteps({
-      chainId: "56",
-      brokerAddress: BROKER_ADDRESS,
-      amount: 1000n,
-    });
+  it("should handle string chainId", async () => {
+    const steps = await buildBrokerBorrowSteps(
+      {
+        chainId: "56",
+        brokerAddress: BROKER_ADDRESS,
+        amount: 1000n,
+      },
+      mockPublicClient,
+      "bsc",
+    );
 
     expect(steps[0].params.chainId).toBe("56");
   });
@@ -58,7 +85,17 @@ describe("buildBrokerBorrowSteps", () => {
 describe("buildBrokerRepaySteps", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockReadContract.mockResolvedValue(0n);
+    // The builder proves the broker is registered before approving to it, so
+    // the mock has to answer the round trip as well as the allowance.
+    mockReadContract.mockImplementation(
+      async ({ functionName }: { functionName: string }) => {
+        if (functionName === "MARKET_ID") return MARKET_ID;
+        if (functionName === "MOOLAH")
+          return getContractAddress("bsc", "moolah");
+        if (functionName === "brokers") return BROKER_ADDRESS;
+        return 0n;
+      },
+    );
   });
 
   it("should build repay step without approval", async () => {
