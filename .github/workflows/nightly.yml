@@ -1,0 +1,77 @@
+name: Nightly chain checks
+
+# Network-dependent, so not a PR gate: a public RPC hiccup must not block a
+# merge. These catch drift between our ABIs and what is actually deployed,
+# which no unit test can see.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  abi-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: ABI selectors resolve on their deployments
+        run: pnpm abi:conformance
+      - name: Every public read returns a usable shape
+        run: pnpm read:surface
+        env:
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+
+  fork-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Authorization and migration flows require a mainnet fork.
+      - name: Authorization and migration flows on a BSC fork
+        run: pnpm fork:check
+        env:
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+
+  fork-flows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Executed, with the resulting state asserted — not just encoded. These
+      # need a market with real depth and, for liquidation, a position that is
+      # actually unhealthy.
+      - name: Vault, Smart Lending and liquidation on a BSC fork
+        run: pnpm fork:flows
+        env:
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}

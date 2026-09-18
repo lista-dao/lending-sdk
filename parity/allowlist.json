@@ -1,0 +1,15 @@
+{
+  "$comment": "Frontend writes the SDK deliberately does not build. Every entry needs a reason, so an omission is a recorded decision rather than an absence nobody noticed.",
+  "omissions": [
+    {
+      "contract": "wbnb",
+      "fn": "deposit",
+      "reason": "Wrapping BNB is a frontend UX convenience, not part of the lending protocol. An integrator holding WBNB or native BNB handles this themselves."
+    },
+    {
+      "contract": "wbnb",
+      "fn": "withdraw",
+      "reason": "Unwrapping WBNB, same reasoning as wbnb.deposit."
+    }
+  ]
+}

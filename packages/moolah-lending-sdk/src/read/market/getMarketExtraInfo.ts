@@ -16,10 +16,8 @@ import {
   getMinLoan,
   getProvider,
   getBorrowRateView,
-  getRateCap,
-  getRateFloor,
-  getRateAtTarget,
 } from "@lista-dao/moolah-sdk-core";
+import { classifyIrm } from "../shared/irm.js";
 
 /**
  * Get market extra information from chain
@@ -53,45 +51,53 @@ export async function getMarketExtraInfo(
   const paramsObj = params;
   const marketObj = marketState;
 
-  // Check if IRM is fixed rate
-  const fixedRateIrmAddress = contracts.fixedRateIrm;
-  const isFixedRateIrm =
-    fixedRateIrmAddress !== zeroAddress && params.irm === fixedRateIrmAddress;
-
+  // What kind of IRM is this? Ask it, do not look it up — see classifyIrm.
+  // Nothing else depends on the answer, so it goes out with everything else
+  // rather than costing a second round trip on the hottest read in the SDK.
   const [
-    _rateView,
-    _rateCap,
-    rateFloor,
-    _priceRate,
-    _rateAtTarget,
-    loanInfo,
-    collateralInfo,
-    minLoan,
-    loanProvider,
-    collateralProvider,
+    irmReading,
+    [
+      _rateView,
+      _priceRate,
+      loanInfo,
+      collateralInfo,
+      minLoan,
+      loanProvider,
+      collateralProvider,
+    ],
   ] = await Promise.all([
-    getBorrowRateView(publicClient, params.irm, paramsObj, marketObj),
-    isFixedRateIrm
-      ? Promise.resolve(null)
-      : getRateCap(publicClient, params.irm, marketId),
-    isFixedRateIrm
-      ? null
-      : getRateFloor(publicClient, params.irm, marketId).catch(() => null),
-    getPrice(publicClient, contracts.moolah, paramsObj),
-    isFixedRateIrm ? 0n : getRateAtTarget(publicClient, params.irm, marketId),
-    getERC20Info(publicClient, params.loanToken),
-    getERC20Info(publicClient, params.collateralToken),
-    getMinLoan(publicClient, contracts.moolah, paramsObj),
-    getProvider(publicClient, contracts.moolah, marketId, params.loanToken),
-    getProvider(
-      publicClient,
-      contracts.moolah,
-      marketId,
-      params.collateralToken,
-    ),
+    classifyIrm(publicClient, params.irm, marketId, contracts.fixedRateIrm),
+    Promise.all([
+      getBorrowRateView(publicClient, params.irm, paramsObj, marketObj),
+      getPrice(publicClient, contracts.moolah, paramsObj),
+      getERC20Info(publicClient, params.loanToken),
+      getERC20Info(publicClient, params.collateralToken),
+      getMinLoan(publicClient, contracts.moolah, paramsObj),
+      getProvider(publicClient, contracts.moolah, marketId, params.loanToken),
+      getProvider(
+        publicClient,
+        contracts.moolah,
+        marketId,
+        params.collateralToken,
+      ),
+    ]),
   ]);
 
-  const rateCap = _rateCap === 0n ? DEFAULT_RATE_CAP : _rateCap;
+  const isFixedRateIrm = irmReading.isFixedRate;
+  const _rateAtTarget = irmReading.rateAtTarget;
+
+  // A fixed-rate market has no adaptive curve, so it has no cap or floor to
+  // report — null, not a default that would misrepresent it. For an adaptive
+  // market a zero cap means "unset, use the protocol default", while a null cap
+  // means the IRM has no such view at all and the rate is genuinely uncapped.
+  // Collapsing those two was a regression: it clamped an uncapped market to the
+  // ~30% default and reported a cap that does not exist.
+  const rateFloor = isFixedRateIrm ? null : irmReading.rateFloor;
+  const rateCap = isFixedRateIrm
+    ? null
+    : irmReading.rateCap === 0n
+      ? DEFAULT_RATE_CAP
+      : irmReading.rateCap;
 
   const remaining = totalSupplyAssets - totalBorrowAssets;
   const utilRate =

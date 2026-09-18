@@ -3,14 +3,10 @@ import type { Address } from "viem";
 export type { Address };
 
 /**
- * Network names supported by Moolah SDK
+ * NOTE: the `NetworkNames` enum was removed in 2.0.0. It duplicated the
+ * `NetworkName` string union in `contracts/types.ts` and had no internal
+ * usages. Use the string literals directly: `NetworkNames.bsc` -> `"bsc"`.
  */
-export enum NetworkNames {
-  bsc = "bsc",
-  ethereum = "ethereum",
-  // bscTestnet = 'bscTestnet',
-  // sepolia = 'sepolia',
-}
 
 /**
  * Token information structure

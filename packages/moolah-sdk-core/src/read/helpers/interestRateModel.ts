@@ -42,17 +42,18 @@ export async function getRateFloor(
   publicClient: PublicClient,
   irmAddress: Address,
   marketId: Address,
-): Promise<bigint | null> {
-  try {
-    return (await publicClient.readContract({
-      address: irmAddress,
-      abi: INTEREST_RATE_MODEL_ABI,
-      functionName: "rateFloor",
-      args: [marketId],
-    })) as bigint;
-  } catch {
-    return null;
-  }
+): Promise<bigint> {
+  // No inner catch. Not every IRM exposes `rateFloor`, but swallowing the error
+  // here means the caller cannot tell "this IRM has no floor" from "the node
+  // did not answer" — and `getBorrowRateInfo` reads a null floor as *no floor*,
+  // so a rate-limited node would silently report a borrow rate below the
+  // market's actual floor. The caller decides, via `optionalRead`.
+  return (await publicClient.readContract({
+    address: irmAddress,
+    abi: INTEREST_RATE_MODEL_ABI,
+    functionName: "rateFloor",
+    args: [marketId],
+  })) as bigint;
 }
 
 /**
