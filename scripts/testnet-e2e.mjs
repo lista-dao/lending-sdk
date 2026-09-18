@@ -332,23 +332,28 @@ async function main() {
       // else's state, not a defect here. Lend the shortfall in, and take it back
       // out in the cleanup so the account ends where it started.
       const extraInfo = await sdk.getMarketExtraInfo(CHAIN_ID, marketId);
-      lentShortfall =
+      const shortfall =
         extraInfo.remaining.numerator >= AMOUNT_TO_BORROW
           ? 0n
           : AMOUNT_TO_BORROW - extraInfo.remaining.numerator + AMOUNT_TO_BORROW;
-      if (lentShortfall > 0n) {
+      if (shortfall > 0n) {
         note(
           `market has ${extraInfo.remaining.numerator} borrowable, need ` +
-            `${AMOUNT_TO_BORROW} — lending ${lentShortfall} in first`,
+            `${AMOUNT_TO_BORROW} — lending ${shortfall} in first`,
         );
         await run(
           await sdk.buildMoolahSupplyParams({
             chainId: CHAIN_ID,
             marketId,
-            assets: lentShortfall,
+            assets: shortfall,
             walletAddress: account.address,
           }),
         );
+        // Only recorded for cleanup once the lend actually landed — setting
+        // it beforehand meant a failed supply still told `finally` to
+        // withdraw liquidity that was never there, and that withdraw's own
+        // failure replaced the real one in the report.
+        lentShortfall = shortfall;
       }
 
       const debtBefore = await debtOf();
@@ -652,14 +657,24 @@ async function main() {
       // lifecycle used to leave it supplied, and so did a run that ended with
       // debt remaining, because the withdraw sat inside the debt-is-clear
       // branch. The account has to end where it started on every path.
-      if (lentShortfall > 0n) {
-        await run(
-          await sdk.buildMoolahWithdrawParams({
-            chainId: CHAIN_ID,
-            marketId: FIXED_TERM_MARKET.id,
-            assets: lentShortfall,
-            walletAddress: account.address,
-          }),
+      //
+      // Wrapped the same way the vault and Smart sections wrap theirs: an
+      // exception thrown inside a `finally` replaces the one that sent us
+      // here, so a failed cleanup withdraw would erase the actual failure.
+      try {
+        if (lentShortfall > 0n) {
+          await run(
+            await sdk.buildMoolahWithdrawParams({
+              chainId: CHAIN_ID,
+              marketId: FIXED_TERM_MARKET.id,
+              assets: lentShortfall,
+              walletAddress: account.address,
+            }),
+          );
+        }
+      } catch (e) {
+        note(
+          `could not unwind the shortfall this run lent in: ${String(e?.message ?? e).slice(0, 160)}`,
         );
       }
     }

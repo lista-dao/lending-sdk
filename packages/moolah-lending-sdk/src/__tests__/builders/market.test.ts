@@ -348,6 +348,45 @@ describe("buildRepaySteps", () => {
     expect(repayStep?.params.value).toBe(500n);
   });
 
+  it("sizes the native value off the resolved flag, not a stale forged one", async () => {
+    // The config claims non-native, but the chain resolves the loan provider
+    // to the real nativeProvider — `withResolvedProviders` corrects the flag,
+    // so the branch taken (native) and the value it carries must agree, even
+    // though `nativeValue` is computed before that correction runs.
+    mockReadContract.mockImplementation(chainSaying({ loan: NATIVE_PROVIDER }));
+    const forgedConfig = {
+      ...baseMarketConfig,
+      loanIsNative: false,
+      loanInfo: {
+        ...baseMarketConfig.loanInfo,
+        address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+      },
+    };
+
+    const mockUserData = {
+      borrowShares: 1000n,
+      decimals: { l: 18 },
+      _getExtraRepayAmount: () => ({
+        roundDown: () => ({ numerator: 500n }),
+      }),
+    };
+
+    const steps = await buildRepaySteps(
+      {
+        chainId: 56,
+        repayAll: true,
+        walletAddress: WALLET,
+      },
+      forgedConfig,
+      { publicClient: mockPublicClient, network: "bsc" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock for test
+      mockUserData as any,
+    );
+
+    const repayStep = steps.find((s) => s.step === "repay");
+    expect(repayStep?.params.value).toBe(500n);
+  });
+
   it("should use shares when provided, and approve what they cost", async () => {
     // Repaying by shares says how much debt to clear, not how many tokens it
     // takes. Sizing the approval from `assets` (zero on this path) emitted no

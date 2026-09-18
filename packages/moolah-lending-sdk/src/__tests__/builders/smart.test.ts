@@ -484,6 +484,45 @@ describe("buildSmartRepaySteps", () => {
     expect(repayStep?.params.value).toBe(500n);
   });
 
+  it("sizes the native value off the resolved flag, not a stale forged one", async () => {
+    // Same ordering hazard as the plain market repay: the config claims
+    // non-native, chain resolution says otherwise, and `nativeValue` — sized
+    // before that correction runs — has to end up agreeing with it.
+    mockReadContract.mockImplementation(async ({ functionName, args }) => {
+      if (functionName === "providers") {
+        return args?.[1] === LOAN_TOKEN ? NATIVE_PROVIDER : COLLATERAL_PROVIDER;
+      }
+      return 0n;
+    });
+    const forgedConfig = {
+      ...baseSmartConfig,
+      loanIsNative: false,
+    };
+
+    const mockUserData = {
+      borrowShares: 1000n,
+      decimals: { l: 18 },
+      _getExtraRepayAmount: () => ({
+        roundDown: () => ({ numerator: 500n }),
+      }),
+    };
+
+    const steps = await buildSmartRepaySteps(
+      {
+        chainId: 56,
+        repayAll: true,
+        walletAddress: WALLET,
+      },
+      forgedConfig,
+      { publicClient: mockPublicClient, network: "bsc" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock for test
+      mockUserData as any,
+    );
+
+    const repayStep = steps.find((s) => s.step === "repaySmartMarket");
+    expect(repayStep?.params.value).toBe(500n);
+  });
+
   it("should use moolah contract when no loan provider", async () => {
     const configNoProvider = {
       ...baseSmartConfig,
@@ -523,6 +562,12 @@ describe("a native pool token claim can never route value to the zero address", 
   }) => {
     if (functionName === "providers") {
       return args?.[1] === LOAN_TOKEN ? LOAN_PROVIDER : zeroAddress;
+    }
+    // A real node throws on `token(0)`/`token(1)` against the zero address —
+    // no bytecode, no return data. A mock that answered `0n` here couldn't
+    // catch a resolver that queried it anyway instead of short-circuiting.
+    if (functionName === "token") {
+      throw new Error("could not decode zero data");
     }
     return 0n;
   };
