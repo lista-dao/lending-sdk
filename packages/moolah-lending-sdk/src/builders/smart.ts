@@ -349,9 +349,6 @@ export async function buildSmartRepaySteps(
     assets = 0n;
     shares = userData.borrowShares;
     approveAmount = repayAmount;
-    if (smartConfig.loanIsNative) {
-      nativeValue = repayAmount;
-    }
   } else {
     // Exactly one of the two must be non-zero; `./builders` is a public
     // subpath export, so the guard cannot live only in the params union.
@@ -367,15 +364,23 @@ export async function buildSmartRepaySteps(
         publicClient,
         network,
       );
-      if (smartConfig.loanIsNative && nativeValue === undefined) {
-        nativeValue = approveAmount;
-      }
     }
   }
 
   // Resolved after the argument checks above, so a malformed call still fails
   // on its arguments rather than on the network.
   smartConfig = await withResolvedProviders(smartConfig, publicClient, network);
+
+  // Sized off the resolved flag, not the caller-supplied one — doing this
+  // before resolution let a stale or forged `loanIsNative` pick a `value`
+  // that no longer matched the branch resolution actually takes.
+  if (smartConfig.loanIsNative) {
+    if (params.repayAll) {
+      nativeValue = approveAmount;
+    } else if (shares > 0n && nativeValue === undefined) {
+      nativeValue = approveAmount;
+    }
+  }
 
   const steps: DraftStep[] = [];
 

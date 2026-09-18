@@ -200,9 +200,6 @@ export async function buildRepaySteps(
     assets = 0n;
     shares = userData.borrowShares;
     approveAmount = repayAmount;
-    if (marketInfo.loanIsNative) {
-      nativeValue = repayAmount;
-    }
   } else {
     // The contract requires exactly one of the two to be non-zero. The params
     // union enforces that at the MoolahSDK door, but `./builders` is a public
@@ -215,15 +212,23 @@ export async function buildRepaySteps(
         publicClient,
         network,
       );
-      if (marketInfo.loanIsNative && nativeValue === undefined) {
-        nativeValue = approveAmount;
-      }
     }
   }
 
   // Resolved after the argument checks above, so a malformed call still fails
   // on its arguments rather than on the network.
   marketInfo = await withResolvedProviders(marketInfo, publicClient, network);
+
+  // Sized off the resolved flag, not the caller-supplied one — doing this
+  // before resolution let a stale or forged `loanIsNative` pick a `value`
+  // that no longer matched the branch resolution actually takes.
+  if (marketInfo.loanIsNative) {
+    if (params.repayAll) {
+      nativeValue = approveAmount;
+    } else if (shares > 0n && nativeValue === undefined) {
+      nativeValue = approveAmount;
+    }
+  }
 
   const steps: DraftStep[] = [];
   let approvedHere = false;

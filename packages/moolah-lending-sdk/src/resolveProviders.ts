@@ -79,7 +79,17 @@ export async function withResolvedProviders<
   // `tokenBIsNative` instead, resolved against the *pair's own* token
   // addresses rather than the provider identity — the same two extra reads
   // `getSmartMarketExtraInfo` and `assertSmartConfigTokens` already make.
-  if ("tokenAIsNative" in config || "tokenBIsNative" in config) {
+  //
+  // Skipped when the provider itself is unregistered: `token(0)`/`token(1)`
+  // against the zero address has no bytecode to call, a real node returns
+  // empty data, and viem's `ContractFunctionZeroDataError` would surface as
+  // an opaque build failure instead of the answer this is already able to
+  // give for free — an unregistered pair is never native, the same as a
+  // plain market's `loanIsNative`/`collateralIsNative` above.
+  if (
+    ("tokenAIsNative" in config || "tokenBIsNative" in config) &&
+    collateralProvider !== zeroAddress
+  ) {
     const [tokenA, tokenB] = await Promise.all([
       publicClient.readContract({
         address: collateralProvider,
@@ -96,6 +106,9 @@ export async function withResolvedProviders<
     ]);
     resolved.tokenAIsNative = tokenA === NATIVE_ADDRESS;
     resolved.tokenBIsNative = tokenB === NATIVE_ADDRESS;
+  } else if ("tokenAIsNative" in config || "tokenBIsNative" in config) {
+    resolved.tokenAIsNative = false;
+    resolved.tokenBIsNative = false;
   }
 
   return { ...config, loanProvider, collateralProvider, ...resolved };
