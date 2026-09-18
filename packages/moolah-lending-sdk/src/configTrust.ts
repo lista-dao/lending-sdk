@@ -1,4 +1,5 @@
 import type { Address, PublicClient } from "viem";
+import { zeroAddress } from "viem";
 import { marketIdOf } from "./builders/sharePricing.js";
 import {
   MOOLAH_ABI,
@@ -182,12 +183,25 @@ export async function assertSmartConfigTokens(
   // tokens. That was safe only inside `resolveSmartConfig`, where the provider
   // had already been pinned — and the function is exported for callers who are
   // not inside it.
+  const marketId = marketIdOf(config.params);
   const provider = (await publicClient.readContract({
     address: getContractAddress(network, "moolah"),
     abi: MOOLAH_ABI,
     functionName: "providers",
-    args: [marketIdOf(config.params), config.params.collateralToken],
+    args: [marketId, config.params.collateralToken],
   })) as Address;
+
+  // Same hazard `withResolvedProviders` guards against: a zero provider has
+  // no bytecode, so `token(0)`/`token(1)`/`dexLP()` against it would surface
+  // as an opaque `ContractFunctionZeroDataError` instead of the clear reason
+  // there is nothing here to check a config's tokens against.
+  if (provider === zeroAddress) {
+    throw new Error(
+      `assertSmartConfigTokens: Moolah has no collateral provider registered ` +
+        `for market ${marketId} — there is no provider to check this config's ` +
+        `tokens against. Refusing to build against it.`,
+    );
+  }
 
   const [tokenA, tokenB, dexLP] = await Promise.all([
     publicClient.readContract({

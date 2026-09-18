@@ -387,6 +387,42 @@ describe("buildRepaySteps", () => {
     expect(repayStep?.params.value).toBe(500n);
   });
 
+  it("honours a caller-supplied nativeValue override for repayAll", async () => {
+    mockReadContract.mockImplementation(chainSaying({ loan: NATIVE_PROVIDER }));
+    const nativeConfig = {
+      ...baseMarketConfig,
+      loanIsNative: true,
+      loanProvider: NATIVE_PROVIDER,
+      loanInfo: {
+        ...baseMarketConfig.loanInfo,
+        address: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c" as Address,
+      },
+    };
+    const mockUserData = {
+      borrowShares: 1000n,
+      decimals: { l: 18 },
+      _getExtraRepayAmount: () => ({
+        roundDown: () => ({ numerator: 500n }),
+      }),
+    };
+
+    const steps = await buildRepaySteps(
+      {
+        chainId: 56,
+        repayAll: true,
+        walletAddress: WALLET,
+        nativeValue: 999n,
+      },
+      nativeConfig,
+      { publicClient: mockPublicClient, network: "bsc" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- partial mock for test
+      mockUserData as any,
+    );
+
+    const repayStep = steps.find((s) => s.step === "repay");
+    expect(repayStep?.params.value).toBe(999n);
+  });
+
   it("should use shares when provided, and approve what they cost", async () => {
     // Repaying by shares says how much debt to clear, not how many tokens it
     // takes. Sizing the approval from `assets` (zero on this path) emitted no

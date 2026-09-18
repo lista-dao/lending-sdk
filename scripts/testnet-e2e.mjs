@@ -29,6 +29,7 @@ import { MoolahSDK } from "@lista-dao/moolah-lending-sdk";
 import {
   CONTRACT_ADDRESSES,
   LENDING_BROKER_ABI,
+  MOOLAH_ABI,
   MOOLAH_VAULT_ABI,
 } from "@lista-dao/moolah-sdk-core";
 import { parseOnly } from "./lib/fork.mjs";
@@ -254,14 +255,30 @@ async function main() {
   // ---- fixed-term lifecycle -------------------------------------------------
   // Bootstraps its own position rather than assuming one exists, so the run is
   // repeatable and a skip means something is actually wrong.
-  // Hoisted out of the section so the reversal below can see it. The lend is
-  // unconditional once there is a shortfall; the withdraw used to sit two
-  // levels deeper, inside the debt-is-clear branch, so any revert between them
-  // — or a run that ended with debt remaining — left the liquidity supplied and
-  // unrecorded.
-  let lentShortfall = 0n;
+  // Hoisted out of the section so the cleanup in `finally` can see them. A
+  // flag saying "we asked for a lend" is not the same question as "is
+  // anything stranded" — the same reasoning the vault and Smart sections'
+  // cleanups already use (see their `sharesOf`/`collateral` snapshots below)
+  // — so cleanup asks the chain's real supply-share balance instead of
+  // trusting a flag set either before the lend (which told `finally` to
+  // withdraw liquidity a failed supply never produced) or after it returned
+  // (which misses a supply that landed on chain but whose confirmation wait
+  // then threw).
+  let sharesBeforeShortfallLend;
+  let shortfall = 0n;
   if (shouldRun("fixed-term")) {
     console.log("fixed-term lifecycle");
+    // Hoisted above the try so `finally` can call it too — it only reads
+    // `FIXED_TERM_MARKET.id`, not anything destructured inside the try block.
+    const supplySharesOf = async () =>
+      (
+        await publicClient.readContract({
+          address: CONTRACT_ADDRESSES.bscTestnet.moolah,
+          abi: MOOLAH_ABI,
+          functionName: "position",
+          args: [FIXED_TERM_MARKET.id, account.address],
+        })
+      )[0];
     try {
       const { id: marketId, broker } = FIXED_TERM_MARKET;
 
@@ -332,7 +349,7 @@ async function main() {
       // else's state, not a defect here. Lend the shortfall in, and take it back
       // out in the cleanup so the account ends where it started.
       const extraInfo = await sdk.getMarketExtraInfo(CHAIN_ID, marketId);
-      const shortfall =
+      shortfall =
         extraInfo.remaining.numerator >= AMOUNT_TO_BORROW
           ? 0n
           : AMOUNT_TO_BORROW - extraInfo.remaining.numerator + AMOUNT_TO_BORROW;
@@ -341,6 +358,11 @@ async function main() {
           `market has ${extraInfo.remaining.numerator} borrowable, need ` +
             `${AMOUNT_TO_BORROW} — lending ${shortfall} in first`,
         );
+        // Snapshotted right before the lend, not before the shortfall check —
+        // `finally` compares against this, not against whether `run()`
+        // returned, so a supply that lands on chain but whose confirmation
+        // wait then throws is still seen as landed and still cleaned up.
+        sharesBeforeShortfallLend = await supplySharesOf();
         await run(
           await sdk.buildMoolahSupplyParams({
             chainId: CHAIN_ID,
@@ -349,11 +371,6 @@ async function main() {
             walletAddress: account.address,
           }),
         );
-        // Only recorded for cleanup once the lend actually landed — setting
-        // it beforehand meant a failed supply still told `finally` to
-        // withdraw liquidity that was never there, and that withdraw's own
-        // failure replaced the real one in the report.
-        lentShortfall = shortfall;
       }
 
       const debtBefore = await debtOf();
@@ -662,19 +679,22 @@ async function main() {
       // exception thrown inside a `finally` replaces the one that sent us
       // here, so a failed cleanup withdraw would erase the actual failure.
       try {
-        if (lentShortfall > 0n) {
-          await run(
-            await sdk.buildMoolahWithdrawParams({
-              chainId: CHAIN_ID,
-              marketId: FIXED_TERM_MARKET.id,
-              assets: lentShortfall,
-              walletAddress: account.address,
-            }),
-          );
+        if (sharesBeforeShortfallLend !== undefined) {
+          const sharesAfterLend = await supplySharesOf();
+          if (sharesAfterLend > sharesBeforeShortfallLend) {
+            await run(
+              await sdk.buildMoolahWithdrawParams({
+                chainId: CHAIN_ID,
+                marketId: FIXED_TERM_MARKET.id,
+                assets: shortfall,
+                walletAddress: account.address,
+              }),
+            );
+          }
         }
       } catch (e) {
         note(
-          `could not unwind the shortfall this run lent in: ${String(e?.message ?? e).slice(0, 160)}`,
+          `could not unwind the shortfall this run lent in: ${String(e?.shortMessage ?? e?.message ?? e).slice(0, 160)}`,
         );
       }
     }

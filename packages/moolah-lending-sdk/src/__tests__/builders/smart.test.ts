@@ -545,14 +545,17 @@ describe("buildSmartRepaySteps", () => {
   });
 });
 
-describe("a native pool token claim can never route value to the zero address", () => {
-  // `tokenAIsNative` / `tokenBIsNative` are now derived from the collateral
-  // provider's own `token(0)` / `token(1)` (see resolveProviders.ts), not
-  // trusted from the config. When the collateral provider itself resolves to
-  // `0x0` — an unregistered pair, a successful `Moolah.providers` read — the
-  // token reads answer off that same dead address and the flags are silently
-  // corrected to `false`, so a forged native claim here no longer needs a
-  // guard that rejects the build: it falls back to the ordinary path.
+describe("an unregistered collateral provider refuses to build, for any Smart step", () => {
+  // A zero `collateralProvider` has no bytecode at all. Silently resolving
+  // `tokenAIsNative`/`tokenBIsNative` to `false` and letting construction
+  // proceed — the first version of this fix — meant every Smart builder that
+  // targets `collateralProvider` (supply, both withdrawal variants, LP
+  // redemption) would go on to build a step against `0x0`. That is not the
+  // recoverable failure an ERC-20 path against a real-but-wrong provider is:
+  // a call to an address with no code always succeeds and moves nothing, so
+  // the step would report success while doing nothing at all. Refusing here,
+  // regardless of what the native flags say, is what actually protects every
+  // one of those builders — see resolveProviders.ts.
   const noCollateralProvider = async ({
     functionName,
     args,
@@ -563,12 +566,6 @@ describe("a native pool token claim can never route value to the zero address", 
     if (functionName === "providers") {
       return args?.[1] === LOAN_TOKEN ? LOAN_PROVIDER : zeroAddress;
     }
-    // A real node throws on `token(0)`/`token(1)` against the zero address —
-    // no bytecode, no return data. A mock that answered `0n` here couldn't
-    // catch a resolver that queried it anyway instead of short-circuiting.
-    if (functionName === "token") {
-      throw new Error("could not decode zero data");
-    }
     return 0n;
   };
 
@@ -578,45 +575,26 @@ describe("a native pool token claim can never route value to the zero address", 
   });
 
   for (const [label, flags] of [
-    ["token A", { tokenAIsNative: true }],
-    ["token B", { tokenBIsNative: true }],
+    ["no native claim", {}],
+    ["a native token A claim", { tokenAIsNative: true }],
+    ["a native token B claim", { tokenBIsNative: true }],
   ] as const) {
-    it(`falls back to the ERC-20 path when a native ${label} claim has no chain provider`, async () => {
-      const steps = await buildSmartSupplyCollateralSteps(
-        {
-          chainId: 56,
-          tokenAAmount: 10n ** 18n,
-          tokenBAmount: 10n ** 18n,
-          minLpAmount: 0n,
-          walletAddress: WALLET,
-        },
-        { ...baseSmartConfig, ...flags },
-        { publicClient: mockPublicClient, network: "bsc" },
-      );
-
-      const supplyStep = steps.find((s) => s.step === "supplySmartCollateral");
-      expect(supplyStep?.params.value).toBeUndefined();
+    it(`refuses to build with ${label} when the chain has no collateral provider`, async () => {
+      await expect(
+        buildSmartSupplyCollateralSteps(
+          {
+            chainId: 56,
+            tokenAAmount: 10n ** 18n,
+            tokenBAmount: 10n ** 18n,
+            minLpAmount: 0n,
+            walletAddress: WALLET,
+          },
+          { ...baseSmartConfig, ...flags },
+          { publicClient: mockPublicClient, network: "bsc" },
+        ),
+      ).rejects.toThrow(/no collateral provider registered/);
     });
   }
-
-  it("still builds when neither pool token is native", async () => {
-    // The guard is about `value`, not about the provider being zero — an
-    // ERC-20 supply to a dead provider wastes an approval and reverts, which
-    // is recoverable. Throwing here too would reject configs for markets whose
-    // provider is simply not registered yet.
-    const steps = await buildSmartSupplyCollateralSteps(
-      {
-        chainId: 56,
-        tokenAAmount: 10n ** 18n,
-        tokenBAmount: 10n ** 18n,
-        minLpAmount: 0n,
-        walletAddress: WALLET,
-      },
-      baseSmartConfig,
-      { publicClient: mockPublicClient, network: "bsc" },
-    );
-    expect(steps.some((s) => s.step === "supplySmartCollateral")).toBe(true);
-  });
 });
 
 describe("the Smart exits resolve their provider too", () => {

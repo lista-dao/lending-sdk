@@ -79,17 +79,22 @@ export async function withResolvedProviders<
   // `tokenBIsNative` instead, resolved against the *pair's own* token
   // addresses rather than the provider identity — the same two extra reads
   // `getSmartMarketExtraInfo` and `assertSmartConfigTokens` already make.
-  //
-  // Skipped when the provider itself is unregistered: `token(0)`/`token(1)`
-  // against the zero address has no bytecode to call, a real node returns
-  // empty data, and viem's `ContractFunctionZeroDataError` would surface as
-  // an opaque build failure instead of the answer this is already able to
-  // give for free — an unregistered pair is never native, the same as a
-  // plain market's `loanIsNative`/`collateralIsNative` above.
-  if (
-    ("tokenAIsNative" in config || "tokenBIsNative" in config) &&
-    collateralProvider !== zeroAddress
-  ) {
+  if ("tokenAIsNative" in config || "tokenBIsNative" in config) {
+    // A zero provider has no bytecode at all, so every Smart builder that
+    // targets `collateralProvider` — supply, both withdrawal variants, LP
+    // redemption — would otherwise go on to build a step against `0x0`. That
+    // is not the recoverable failure a normal ERC-20 path is: a call to an
+    // address with no code always succeeds, moving nothing, so the step
+    // would report success and do nothing. Refusing here, at resolution, is
+    // the one place that protects every one of those builders at once.
+    if (collateralProvider === zeroAddress) {
+      throw new Error(
+        `withResolvedProviders: Moolah has no collateral provider registered ` +
+          `for market ${marketId} — this is not a Smart Lending market, or its ` +
+          `pair is not registered yet. Refusing to build a step against the ` +
+          `zero address.`,
+      );
+    }
     const [tokenA, tokenB] = await Promise.all([
       publicClient.readContract({
         address: collateralProvider,
@@ -103,12 +108,18 @@ export async function withResolvedProviders<
         functionName: "token",
         args: [1n],
       }) as Promise<Address>,
-    ]);
+    ]).catch((error: unknown) => {
+      // A real but non-conforming provider — zone 6, advertised as Smart
+      // Lending by the feed but not implementing this interface at all (see
+      // getSmartMarketExtraInfo.ts). That case has bytecode to call, so the
+      // step it would eventually build reverts normally instead of silently
+      // no-op'ing like the zero-address case above; a transport failure is
+      // rethrown rather than read as "not native".
+      if (!isContractLevelFailure(error)) throw error;
+      return [zeroAddress, zeroAddress] as const;
+    });
     resolved.tokenAIsNative = tokenA === NATIVE_ADDRESS;
     resolved.tokenBIsNative = tokenB === NATIVE_ADDRESS;
-  } else if ("tokenAIsNative" in config || "tokenBIsNative" in config) {
-    resolved.tokenAIsNative = false;
-    resolved.tokenBIsNative = false;
   }
 
   return { ...config, loanProvider, collateralProvider, ...resolved };
