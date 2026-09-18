@@ -222,12 +222,11 @@ export async function buildRepaySteps(
   // Sized off the resolved flag, not the caller-supplied one — doing this
   // before resolution let a stale or forged `loanIsNative` pick a `value`
   // that no longer matched the branch resolution actually takes.
-  if (marketInfo.loanIsNative) {
-    if (params.repayAll) {
-      nativeValue = approveAmount;
-    } else if (shares > 0n && nativeValue === undefined) {
-      nativeValue = approveAmount;
-    }
+  // `approveAmount` already equals `assets` when neither branch above touched
+  // it, so this collapses to one check: honour an explicit caller override in
+  // every path, not just the shares one.
+  if (marketInfo.loanIsNative && nativeValue === undefined) {
+    nativeValue = approveAmount;
   }
 
   const steps: DraftStep[] = [];
