@@ -32,7 +32,18 @@ vi.mock("viem", async () => {
           }
           // The builders resolve the provider from the chain now, so a blanket
           // 0n would hand back a number where an address belongs.
-          if (functionName === "providers" || functionName === "provider") {
+          //
+          // `providers` (Moolah, plural — market/Smart) resolves to a real
+          // registered provider here: these are facade smoke tests checking
+          // that a method wires through to the right builder, not exercises
+          // of "what if this market has no provider" — and Smart builders now
+          // refuse to build against a provider that resolves to the zero
+          // address (see resolveProviders.ts). `provider` (a vault's own,
+          // singular) stays zero: these tests want the plain ERC-4626 path.
+          if (functionName === "providers") {
+            return "0x9999999999999999999999999999999999999999";
+          }
+          if (functionName === "provider") {
             return "0x0000000000000000000000000000000000000000";
           }
           return 0n;
