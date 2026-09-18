@@ -129,6 +129,23 @@ const record = (name, ok, detail = "") => {
   );
 };
 
+/**
+ * Re-reads until the predicate holds, or gives up. `run()` already waits for
+ * the transaction's own receipt before returning; this is for the read that
+ * comes right after. The RPC endpoint here is commonly a load-balanced pool,
+ * and the very next call can land on a node a block behind the one that
+ * confirmed the write — a state read that hasn't caught up yet is not
+ * evidence the transaction did nothing, it just asked the wrong node first.
+ */
+async function settle(read, isSettled, { tries = 5, delayMs = 3000 } = {}) {
+  let value = await read();
+  for (let i = 0; i < tries && !isSettled(value); i++) {
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    value = await read();
+  }
+  return value;
+}
+
 function loadAccount() {
   const raw = process.env.TESTNET_PRIVATE_KEY?.trim();
   // Stored keys come with or without the 0x prefix, and often with a trailing
@@ -653,10 +670,9 @@ async function main() {
             walletAddress: account.address,
           }),
         );
-        const afterWithdraw = await sdk.getMarketUserData(
-          CHAIN_ID,
-          marketId,
-          account.address,
+        const afterWithdraw = await settle(
+          () => sdk.getMarketUserData(CHAIN_ID, marketId, account.address),
+          (d) => d.collateral.numerator < afterSupply.collateral.numerator,
         );
         record(
           "collateral comes back out once the debt is clear",
