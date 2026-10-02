@@ -9,15 +9,19 @@ import type { FixedLoanPosition } from "../types/loan.js";
  * window, the maturity cap — which is what catches a regression but not what
  * catches a formula that is subtly the wrong shape. Both defects this file was
  * written for were of the second kind: the penalty inverted the contract
- * instead of transcribing it (1.33x the real figure at 30% APR), and every
- * division floored where the contract ceils (a matured 1000-token position
- * quoted 32 wei short, which leaves dust principal and reverts
- * `broker/fixed-below-min-loan`). Neither shows up as a wrong-looking number.
+ * instead of transcribing it, and every division floored where the contract
+ * ceils. Neither shows up as a wrong-looking number.
  *
- * So this sweeps the parameter space and asserts two things per case: that the
- * interest and penalty equal the contract's, and — the property that actually
- * matters to a caller — that sending `totalRepay` clears the position exactly,
- * with nothing left on the principal and nothing refunded.
+ * The sweep deliberately includes parameters no live market has — 30% and 80%
+ * APRs, one- and two-year terms. That is where the two formulas diverge most
+ * visibly, which makes them useful for pinning the shape; it is not a claim
+ * about production, where terms are 7/14/30 days and APRs run 0.5%–10.2%, and
+ * the same divergences are worth fractions of a percent.
+ *
+ * Per case it asserts the interest and penalty equal the contract's exactly,
+ * that sending that exact sum clears the position with nothing stranded and
+ * nothing refunded, and that `totalRepay` — the same sum plus the forward
+ * margin — also clears it, handing back precisely the margin.
  *
  * Transcribed from `lista-dao/moolah` at `src/broker/libraries/BrokerMath.sol`:
  * `_aprPerSecond`, `getAccruedInterestForFixedPosition`,
@@ -149,11 +153,61 @@ describe("calculateFixedLoanRepayment matches BrokerMath", () => {
       now < p.end ? penaltyFor(p, remaining, now) : 0n,
     );
 
-    // The property a caller depends on: send this and the position is closed,
-    // with nothing stranded on the principal and nothing handed back.
-    const total = result.principal + result.interest + result.penalty;
-    const settled = previewRepay(p, total, now);
+    // The breakdown is exact, so sending exactly it closes the position with
+    // nothing stranded and nothing handed back.
+    const exact = result.principal + result.interest + result.penalty;
+    const settled = previewRepay(p, exact, now);
     expect(settled.remainingAfter).toBe(0n);
     expect(settled.unspent).toBe(0n);
+
+    // `totalRepay` is the figure to send, so it is the exact one plus the
+    // forward-interest margin — never below it, and still closing.
+    const toSend = result.totalRepay.numerator;
+    expect(toSend).toBeGreaterThanOrEqual(exact);
+    const sent = previewRepay(p, toSend, now);
+    expect(sent.remainingAfter).toBe(0n);
+    expect(sent.unspent).toBe(toSend - exact);
+  });
+
+  // What the margin is for. A quote computed now and mined later is short by
+  // the interest accrued in between; without the margin the shortfall lands on
+  // the principal and `_validateFixedPosition` rejects any remainder below
+  // `minLoan`. `minLoan` is 15 tokens on the largest live market.
+  describe("a quote survives the delay between building and mining", () => {
+    const MIN_LOAN = 15n * 10n ** 18n;
+    const stale: Array<[string, bigint]> = [
+      ["30 seconds", 30n],
+      ["5 minutes", 300n],
+      ["15 minutes", 900n],
+    ];
+
+    // A large, slow-accruing live position: 12.6M at 4.651% over 30 days.
+    const big = {
+      posId: 1n,
+      principal: 12_657_506n * 10n ** 18n,
+      principalRepaid: 0n,
+      interestRepaid: 0n,
+      lastRepaidTime: START,
+      apr: RATE_SCALE + (RATE_SCALE * 4651n) / 100_000n,
+      start: START,
+      end: START + 30n * 86400n,
+    } satisfies FixedLoanPosition;
+
+    it.each(stale)("still clears after %s", (_label, delay) => {
+      const quotedAt = START + 10n * 86400n;
+      const toSend = calculateFixedLoanRepayment(big, quotedAt).totalRepay
+        .numerator;
+      const settled = previewRepay(big, toSend, quotedAt + delay);
+      expect(settled.remainingAfter).toBe(0n);
+    });
+
+    it("without the margin, the same quote strands dust under minLoan", () => {
+      const quotedAt = START + 10n * 86400n;
+      const exact = calculateFixedLoanRepayment(big, quotedAt, 18, 0n)
+        .totalRepay.numerator;
+      const settled = previewRepay(big, exact, quotedAt + 900n);
+      expect(settled.remainingAfter).toBeGreaterThan(0n);
+      expect(settled.remainingAfter).toBeLessThan(MIN_LOAN);
+    });
   });
 });
