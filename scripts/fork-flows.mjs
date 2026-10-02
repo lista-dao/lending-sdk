@@ -833,11 +833,13 @@ async function liquidationFlow({ sdk, publicClient, rpcUrl, account, run, balanc
   const loanToken = params.loanToken;
   const liquidator = getContractAddress("bsc", "moolahPublicLiquidation");
 
-  // The gate, before anything else. The liquidator only serves markets an admin
-  // has enabled, and at the time of writing not one market in the "close to
-  // liquidation" feed was enabled — so the honest first assertion is that the
-  // SDK refuses to build a call that can only revert.
-  const enabled = await sdk.isLiquidationMarketEnabled(CHAIN, marketId);
+  // The gate, before anything else. Two contracts decide it — the liquidator's
+  // own three openings and Moolah's check on the liquidator as caller — and at
+  // the time of writing not one market in the "close to liquidation" feed was
+  // open, so the honest first assertion is that the SDK refuses to build a
+  // call that can only revert. `borrower` matters: the per-borrower opening is
+  // one of the three, and omitting it under-reports.
+  const enabled = await sdk.isLiquidationMarketEnabled(CHAIN, marketId, borrower);
   const refusal = await sdk
     .buildLiquidateParams({
       chainId: CHAIN, marketId, borrower, walletAddress: account,
@@ -847,9 +849,11 @@ async function liquidationFlow({ sdk, publicClient, rpcUrl, account, run, balanc
     .catch((e) => String(e.message));
   record(
     enabled
-      ? "market is on the liquidator's allowlist, so the builder proceeds"
-      : "the builder refuses a market the liquidator will not serve",
-    enabled ? refusal === null : /not on the public liquidator/.test(refusal ?? ""),
+      ? "market is open to the liquidator, so the builder proceeds"
+      : "the builder refuses a market the liquidator cannot serve",
+    enabled
+      ? refusal === null
+      : /is not open to the public liquidator/.test(refusal ?? ""),
     enabled ? "" : "would have reverted with NotWhitelisted()",
   );
 
@@ -881,9 +885,45 @@ async function liquidationFlow({ sdk, publicClient, rpcUrl, account, run, balanc
         },
       },
     ]);
+
+    // Enabling the market on the liquidator is necessary and not sufficient,
+    // and the two requirements interlock: `setMarketWhitelist` only accepts a
+    // market whose Moolah liquidation list is *non-empty*, and a non-empty
+    // list is exactly the case where `Moolah.liquidate` then checks its caller
+    // against it. So on any market this branch can run at all, the liquidator
+    // must also be in Moolah's list — otherwise the call still reverts
+    // NOT_LIQUIDATION_WHITELIST, and the SDK is right to keep refusing.
+    const moolah = getContractAddress("bsc", "moolah");
+    const liquidatorListed = await publicClient.readContract({
+      address: moolah,
+      abi: MOOLAH_ADMIN_ABI,
+      functionName: "isLiquidationWhitelist",
+      args: [marketId, liquidator],
+    });
+    if (!liquidatorListed) {
+      const role = await publicClient.readContract({
+        address: moolah, abi: MOOLAH_ADMIN_ABI, functionName: "MANAGER",
+      });
+      await grantRoleOnFork(rpcUrl, publicClient, moolah, role, account);
+      await run([
+        {
+          index: 0,
+          step: "batchToggleLiquidationWhitelist",
+          params: {
+            to: moolah,
+            data: encodeFunctionData({
+              abi: MOOLAH_ADMIN_ABI,
+              functionName: "batchToggleLiquidationWhitelist",
+              args: [[marketId], [[liquidator]], true],
+            }),
+          },
+        },
+      ]);
+    }
+
     record(
-      "enabling the market on the liquidator lets the call through",
-      (await sdk.isLiquidationMarketEnabled(CHAIN, marketId)) === true,
+      "opening both gates on the liquidator and Moolah lets the call through",
+      (await sdk.isLiquidationMarketEnabled(CHAIN, marketId, borrower)) === true,
     );
   }
 
@@ -969,6 +1009,38 @@ const LIQUIDATOR_ADMIN_ABI = [
       { name: "status", type: "bool" },
     ],
     name: "setMarketWhitelist",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+];
+
+/** Moolah's half of the liquidation gate, which the harness also has to open. */
+const MOOLAH_ADMIN_ABI = [
+  {
+    inputs: [],
+    name: "MANAGER",
+    outputs: [{ name: "", type: "bytes32" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "id", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+    name: "isLiquidationWhitelist",
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      { name: "ids", type: "bytes32[]" },
+      { name: "accounts", type: "address[][]" },
+      { name: "isAddition", type: "bool" },
+    ],
+    name: "batchToggleLiquidationWhitelist",
     outputs: [],
     stateMutability: "nonpayable",
     type: "function",

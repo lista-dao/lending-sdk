@@ -139,7 +139,11 @@ describe("calculateFixedLoanRepayment", () => {
     principal: 1000n * DECIMAL_SCALE,
     principalRepaid: 0n,
     interestRepaid: 0n,
-    lastRepaidTime: 0n,
+    // What the broker actually stamps on a new position
+    // (`LendingBroker._createFixedPosition`). A zero here is not a state the
+    // chain can produce, and using one would mean these tests exercised the
+    // defensive floor rather than the real path.
+    lastRepaidTime: 1704067200n,
     apr: RATE_SCALE_27 + (RATE_SCALE_27 * 5n) / 100n, // 5% APR
     start: 1704067200n, // 2024-01-01
     end: 1735689600n, // 2025-01-01
@@ -251,6 +255,32 @@ describe("calculateFixedLoanRepayment", () => {
     ).interest;
 
     expect(net).toBe(gross - paid);
+  });
+
+  // This is a public export of a package that ships JavaScript, and the two
+  // fields the accrual window is built from are the two most likely to be
+  // missing from a hand-assembled position. Reading them raw means
+  // `accrued > undefined` is false and the position reports no interest at
+  // all, or the subtraction throws — both worse than the figure they replaced.
+  it("treats missing lastRepaidTime and interestRepaid as zero, not as no interest", () => {
+    const halfway = (basePosition.start + basePosition.end) / 2n;
+    const expected = calculateFixedLoanRepayment(
+      basePosition,
+      halfway,
+    ).interest;
+
+    const handAssembled = {
+      posId: basePosition.posId,
+      principal: basePosition.principal,
+      principalRepaid: basePosition.principalRepaid,
+      apr: basePosition.apr,
+      start: basePosition.start,
+      end: basePosition.end,
+    } as unknown as typeof basePosition;
+
+    expect(calculateFixedLoanRepayment(handAssembled, halfway).interest).toBe(
+      expected,
+    );
   });
 
   it("floors at zero when more interest is recorded than accrued", () => {

@@ -193,10 +193,15 @@ export async function buildBrokerBorrowSteps(
  * `amount` is a **debt** figure, and the contract spends it interest first:
  * `previewConvertDynamicToFixed` takes `min(amount, accruedInterest)` for the
  * interest and only what is left moves principal. So to convert the whole leg
- * pass `dynamicOutstanding` from `getBrokerUserPositions` — principal plus
- * accrued interest — not `dynamicPosition.principal`. Passing the principal
- * converts principal minus the interest and strands roughly the interest on
- * the flexible leg, which then fails the minimum-loan check below.
+ * pass `dynamicOutstanding` from `getBrokerUserPositions`, not
+ * `dynamicPosition.principal`. Passing the principal converts principal minus
+ * the interest and strands roughly the interest on the flexible leg, which
+ * then fails the minimum-loan check below.
+ *
+ * `dynamicOutstanding` is principal plus accrued interest plus a further 10%
+ * of that interest — it is sized as a repayment estimate, where overshoot is
+ * refunded. That makes it more than the contract's debt figure, which is
+ * exactly what this call wants, for the reason in the next paragraph.
  *
  * Overshooting is safe: both legs are clamped by `min`, so a figure above the
  * outstanding debt converts exactly the outstanding debt. Headroom is the
