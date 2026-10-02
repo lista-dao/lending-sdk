@@ -95,9 +95,25 @@ export const PUBLIC_LIQUIDATOR_ABI = [
   // only touch a market an admin has enabled, and refuses the rest with
   // `NotWhitelisted()`. Reading it is the difference between refusing to build
   // a doomed call and spending gas to discover the same thing.
+  //
+  // It is one of three, though — `isLiquidatable` is an OR over this,
+  // `Moolah.isLiquidationWhitelist(id, address(0))`, and the per-borrower
+  // entry below. Reading this one alone refuses markets that are open.
   {
     inputs: [{ internalType: "Id", name: "", type: "bytes32" }],
     name: "marketWhitelist",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
+  // The per-borrower opening: a market closed to everyone else can still be
+  // enabled for one unhealthy position.
+  {
+    inputs: [
+      { internalType: "Id", name: "", type: "bytes32" },
+      { internalType: "address", name: "", type: "address" },
+    ],
+    name: "marketUserWhitelist",
     outputs: [{ internalType: "bool", name: "", type: "bool" }],
     stateMutability: "view",
     type: "function",

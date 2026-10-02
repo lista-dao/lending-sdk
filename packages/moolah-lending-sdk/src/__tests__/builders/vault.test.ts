@@ -324,6 +324,26 @@ describe("buildVaultWithdrawSteps", () => {
     expect(steps[0].params.to).toBe(PROVIDER);
   });
 
+  // The union makes this a compile error, but the package ships JavaScript.
+  // Without the guard the `shares` branch wins silently and `assets` is
+  // dropped: a redeem of a different size, reported as the withdrawal that was
+  // asked for. The market builders have refused this shape all along.
+  it("should throw when both assets and shares are provided", async () => {
+    await expect(
+      buildVaultWithdrawSteps(
+        {
+          chainId: 56,
+          vaultAddress: VAULT_ADDRESS,
+          assets: 500n * 10n ** 18n,
+          shares: 500n * 10n ** 18n,
+          walletAddress: WALLET,
+        } as never,
+        baseVaultInfo,
+        withdrawDeps,
+      ),
+    ).rejects.toThrow(/exactly one of `assets` or `shares`/);
+  });
+
   it("should throw when neither assets nor shares provided", async () => {
     await expect(
       buildVaultWithdrawSteps(

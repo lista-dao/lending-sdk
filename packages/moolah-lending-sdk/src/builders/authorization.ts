@@ -10,6 +10,7 @@ import {
 } from "@lista-dao/moolah-sdk-core";
 import type { ChainId, StepParam } from "../types.js";
 import { buildCallParams, finalizeSteps, type DraftStep } from "../utils.js";
+import { marketIdOf, sharesToAssetCeiling } from "./sharePricing.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -184,12 +185,59 @@ export async function buildMigrateToFixedTermSteps(
   const { publicClient, network } = deps;
   const positionManager = getContractAddress(network, "positionManager");
 
-  const isAuthorized = (await publicClient.readContract({
-    address: getContractAddress(network, "moolah"),
-    abi: MOOLAH_ABI,
-    functionName: "isAuthorized",
-    args: [params.walletAddress, positionManager],
-  })) as boolean;
+  // The target market has to be able to fund the new borrow. It is checked
+  // here, before the authorization, because of the asymmetry between the two
+  // steps: the grant is standing and lands first, the migration reverts
+  // `insufficient liquidity` second, and what the caller is left holding is an
+  // authorization they never got any use out of. `reversalSteps` on the grant
+  // makes that recoverable; not reaching it at all is better.
+  const [isAuthorized, inMarket] = await Promise.all([
+    publicClient.readContract({
+      address: getContractAddress(network, "moolah"),
+      abi: MOOLAH_ABI,
+      functionName: "isAuthorized",
+      args: [params.walletAddress, positionManager],
+    }) as Promise<boolean>,
+    publicClient.readContract({
+      address: getContractAddress(network, "moolah"),
+      abi: MOOLAH_ABI,
+      functionName: "market",
+      args: [marketIdOf(inn)],
+    }) as Promise<readonly bigint[]>,
+  ]);
+
+  // Same tell `supplySharesToAssetCeiling` uses: a market that was never
+  // created reads back as all zeros without throwing, and `lastUpdate` is the
+  // only field that separates it from a genuinely empty one.
+  if (inMarket?.[4] === 0n) {
+    throw new Error(
+      `buildMigrateToFixedTermSteps: the target market ${marketIdOf(inn)} has ` +
+        `never been created. Check the fixed-term market config.`,
+    );
+  }
+  // A share-denominated migration says "all of it" in the source market's
+  // units, so it has to be priced there before it can be compared against the
+  // target's liquidity. The ceiling carries headroom, which makes this check
+  // conservative — the right direction for a pre-flight.
+  const borrowSize =
+    borrowShares > 0n
+      ? await sharesToAssetCeiling(
+          borrowShares,
+          params.outMarket,
+          publicClient,
+          network,
+        )
+      : borrowAmount;
+
+  const available = (inMarket?.[0] ?? 0n) - (inMarket?.[2] ?? 0n);
+  if (available < borrowSize) {
+    throw new Error(
+      `buildMigrateToFixedTermSteps: the target market ${marketIdOf(inn)} has ` +
+        `${available} loan tokens available and this migration needs ` +
+        `${borrowSize}, so it would revert after the authorization had ` +
+        `already landed. Wait for liquidity, or migrate a smaller amount.`,
+    );
+  }
 
   const steps: DraftStep[] = [];
 

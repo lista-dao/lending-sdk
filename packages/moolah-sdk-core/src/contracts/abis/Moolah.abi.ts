@@ -361,6 +361,21 @@ export const MOOLAH_ABI = [
     stateMutability: "view",
     type: "function",
   },
+  // The second gate on every liquidation. `Moolah.liquidate` requires its
+  // caller to pass this, so a market whose list is non-empty and omits the
+  // public liquidator rejects the call even when the liquidator itself was
+  // willing. An empty list means permissionless, which is what asking with
+  // `address(0)` detects.
+  {
+    inputs: [
+      { internalType: "Id", name: "id", type: "bytes32" },
+      { internalType: "address", name: "account", type: "address" },
+    ],
+    name: "isLiquidationWhitelist",
+    outputs: [{ internalType: "bool", name: "", type: "bool" }],
+    stateMutability: "view",
+    type: "function",
+  },
   {
     inputs: [
       {

@@ -1,5 +1,7 @@
 import type { Address, PublicClient } from "viem";
+import { zeroAddress } from "viem";
 import {
+  MOOLAH_ABI,
   PUBLIC_LIQUIDATOR_ABI,
   getContractAddress,
   type NetworkName,
@@ -39,24 +41,68 @@ function resolveLiquidationAmounts(params: {
 }
 
 /**
- * Is this market enabled on the public liquidator?
+ * Can this position be liquidated through the public liquidator?
  *
- * The liquidator keeps a per-market allowlist and reverts `NotWhitelisted()`
- * for everything else. At the time of writing not one of the thirteen distinct
- * markets the "close to liquidation" feed returns on BSC was enabled, so this
- * is the common case, not the corner case — and the revert carries a bare
- * selector, which is what an integrator would be left staring at.
+ * Two contracts gate it, and reading either alone gets the answer wrong.
+ *
+ * `PublicLiquidator.isLiquidatable` is an **OR of three**: the market's Moolah
+ * liquidation list is empty (permissionless), or the market is on the
+ * liquidator's own allowlist, or this one borrower is. Reading
+ * `marketWhitelist` alone — which is what this used to do — refuses every
+ * permissionless market and every per-borrower opening, which is the common
+ * case rather than the corner one.
+ *
+ * Then `Moolah.liquidate` separately requires **its caller** to pass the same
+ * market's list. So a market the liquidator is willing to serve still reverts
+ * `NOT_LIQUIDATION_WHITELIST` when that list is non-empty and the public
+ * liquidator is not in it. Both layers have to hold.
+ *
+ * `borrower` is optional only because the per-borrower opening is the one
+ * branch that needs it; omit it and the answer is "is this market open to
+ * anyone", which under-reports.
  */
 export async function isLiquidationMarketEnabled(
   marketId: `0x${string}`,
   deps: LiquidationBuilderDeps,
+  borrower?: Address,
 ): Promise<boolean> {
-  return (await deps.publicClient.readContract({
-    address: getContractAddress(deps.network, "moolahPublicLiquidation"),
-    abi: PUBLIC_LIQUIDATOR_ABI,
-    functionName: "marketWhitelist",
-    args: [marketId],
-  })) as boolean;
+  const liquidator = getContractAddress(
+    deps.network,
+    "moolahPublicLiquidation",
+  );
+  const moolah = getContractAddress(deps.network, "moolah");
+
+  const [openToAnyone, marketListed, borrowerListed, liquidatorAllowed] =
+    await Promise.all([
+      deps.publicClient.readContract({
+        address: moolah,
+        abi: MOOLAH_ABI,
+        functionName: "isLiquidationWhitelist",
+        args: [marketId, zeroAddress],
+      }) as Promise<boolean>,
+      deps.publicClient.readContract({
+        address: liquidator,
+        abi: PUBLIC_LIQUIDATOR_ABI,
+        functionName: "marketWhitelist",
+        args: [marketId],
+      }) as Promise<boolean>,
+      borrower
+        ? (deps.publicClient.readContract({
+            address: liquidator,
+            abi: PUBLIC_LIQUIDATOR_ABI,
+            functionName: "marketUserWhitelist",
+            args: [marketId, borrower],
+          }) as Promise<boolean>)
+        : Promise.resolve(false),
+      deps.publicClient.readContract({
+        address: moolah,
+        abi: MOOLAH_ABI,
+        functionName: "isLiquidationWhitelist",
+        args: [marketId, liquidator],
+      }) as Promise<boolean>,
+    ]);
+
+  return (openToAnyone || marketListed || borrowerListed) && liquidatorAllowed;
 }
 
 /**
@@ -131,13 +177,20 @@ export async function buildLiquidateSteps(
   }
 
   if (!params.allowUnlistedMarket) {
-    const enabled = await isLiquidationMarketEnabled(params.marketId, deps);
+    const enabled = await isLiquidationMarketEnabled(
+      params.marketId,
+      deps,
+      params.borrower,
+    );
     if (!enabled) {
       throw new Error(
-        `buildLiquidateSteps: market ${params.marketId} is not on the public ` +
-          `liquidator's allowlist, so this call would revert with ` +
-          `NotWhitelisted(). Check marketWhitelist() before offering the ` +
-          `action, or pass allowUnlistedMarket to build it anyway.`,
+        `buildLiquidateSteps: market ${params.marketId} is not open to the ` +
+          `public liquidator for ${params.borrower}, so this call would ` +
+          `revert — NotWhitelisted() from the liquidator, or ` +
+          `NOT_LIQUIDATION_WHITELIST from Moolah if the market's own ` +
+          `liquidation list omits the liquidator. Check ` +
+          `isLiquidationMarketEnabled() before offering the action, or pass ` +
+          `allowUnlistedMarket to build it anyway.`,
       );
     }
   }

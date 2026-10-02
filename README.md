@@ -87,8 +87,13 @@ const borrowSteps = await sdk.buildBorrowParams({
 // Execute steps with your wallet client.
 // The array is strictly ordered: send each step, wait for it to be mined,
 // then send the next. Do not reorder or run them in parallel.
+//
+// `step.params` already carries encoded `data`, so send it with
+// `sendTransaction`. It is not a `writeContract` argument: that one wants
+// `address`, and a step names its target `to`.
 for (const step of borrowSteps) {
-  const hash = await walletClient.writeContract(step.params);
+  const { to, data, value } = step.params;
+  const hash = await walletClient.sendTransaction({ to, data, value });
   await publicClient.waitForTransactionReceipt({ hash });
 }
 ```
@@ -145,15 +150,22 @@ for a vault. All three are exported from the package root and from
   lands later. If the gap is long enough to matter, rebuild rather than send.
 
 ```typescript
+const send = (params) =>
+  walletClient.sendTransaction({
+    to: params.to,
+    data: params.data,
+    value: params.value,
+  });
+
 for (const step of steps) {
   try {
-    const hash = await walletClient.writeContract(step.params);
+    const hash = await send(step.params);
     await publicClient.waitForTransactionReceipt({ hash });
   } catch (err) {
     // Undo anything durable that already landed.
     for (const done of steps.slice(0, step.index)) {
       for (const undo of done.meta?.reversalSteps ?? []) {
-        await walletClient.writeContract(undo.params);
+        await send(undo.params);
       }
     }
     throw err;
@@ -225,7 +237,7 @@ Every write the protocol supports, grouped by what you are doing.
 | `buildBrokerRepayParams`            | repay one fixed position                         |
 | `buildBrokerRepayAllParams`         | settle every leg with a broker at once           |
 | `buildConvertDynamicToFixedParams`  | move flexible debt into a term                   |
-| `buildBrokerRefinanceMaturedParams` | roll matured positions into fresh terms          |
+| `buildBrokerRefinanceMaturedParams` | settle matured terms back onto the flexible leg (BOT only) |
 | `buildMigrateToFixedTermParams`     | migrate a position into a fixed-term market      |
 
 `buildConvertDynamicToFixedParams` stays inside one broker: one transaction, no
@@ -233,8 +245,12 @@ approval, no authorization. `buildMigrateToFixedTermParams` crosses markets and
 needs the PositionManager authorized — it emits that step only when it is
 missing, and attaches the revoke as `meta.reversalSteps`.
 
-Refinancing a matured position settles the term; it does not open a new one.
-Read the position back rather than looking for a fresh term id.
+Refinancing a matured position settles the term back onto the flexible leg; it
+does not open a new one. Read the position back rather than looking for a fresh
+term id. It is also not a user action: `refinanceMaturedFixedPositions` carries
+`onlyRole(BOT)` on the broker, so operations drives it on a schedule and a
+wallet without that role reverts. The builder is here for that operator, not
+for a frontend button.
 
 Two things about repaying a fixed position, both of which revert if you get
 them wrong. `posId` is the position's **own id** from `userFixedPositions`, not

@@ -190,18 +190,22 @@ export async function buildBrokerBorrowSteps(
  * Distinct from a cross-market migration: this stays inside the broker, so it
  * needs no authorization and no approval, and is a single transaction.
  *
- * `amount` is **principal**, not outstanding. `dynamicOutstanding` from
- * `getBrokerUserPositions` is principal plus accrued interest; passing it asks
- * to convert more than the leg holds and reverts — intermittently, depending on
- * how far the contract's own accrual has caught up with the SDK's figure, which
- * is the worst way for it to fail. Use `dynamicPosition.principal`.
+ * `amount` is a **debt** figure, and the contract spends it interest first:
+ * `previewConvertDynamicToFixed` takes `min(amount, accruedInterest)` for the
+ * interest and only what is left moves principal. So to convert the whole leg
+ * pass `dynamicOutstanding` from `getBrokerUserPositions` — principal plus
+ * accrued interest — not `dynamicPosition.principal`. Passing the principal
+ * converts principal minus the interest and strands roughly the interest on
+ * the flexible leg, which then fails the minimum-loan check below.
  *
- * A conversion leaves two legs, and the market rejects any position below its
- * minimum loan — so `amount` must clear `minLoan`, and what remains on the
- * flexible leg must be either zero or also above it. Converting "half" of a
- * position sized near the minimum reverts with
- * `broker/positions-below-min-loan`. Read `minLoan` from
- * `getMarketExtraInfo` and size accordingly, or convert the whole leg.
+ * Overshooting is safe: both legs are clamped by `min`, so a figure above the
+ * outstanding debt converts exactly the outstanding debt. Headroom is the
+ * right way to absorb accrual between building and inclusion.
+ *
+ * A partial conversion leaves two legs, and the broker rejects either below
+ * the market's minimum loan — `broker/dynamic-below-min-loan` for what remains
+ * flexible, `broker/fixed-below-min-loan` for the new term. Read `minLoan`
+ * from `getMarketExtraInfo` and size accordingly, or convert the whole leg.
  */
 export async function buildConvertDynamicToFixedSteps(
   params: BuildConvertDynamicToFixedParams,
@@ -333,13 +337,15 @@ export async function buildBrokerRepayAllSteps(
  * Settle matured fixed-term positions.
  *
  * A matured term still owes — it does not clear itself — and this is what
- * closes it without a repayment. Where the balance lands is the broker's
- * decision, not this call's, so read the position back rather than assuming a
- * new term id appeared. What is guaranteed is that the matured leg is gone and
- * the debt is not.
+ * closes it without a repayment. The balance returns to the **flexible leg**:
+ * no new term id appears, so read the position back rather than looking for
+ * one. What is guaranteed is that the matured leg is gone and the debt is not.
  *
- * Without it a matured position has to be repaid and re-borrowed, so it is part
- * of the fixed-term lifecycle rather than an optimisation.
+ * **Operator-only.** The broker declares
+ * `refinanceMaturedFixedPositions(...) onlyRole(BOT)`, so only the scheduled
+ * job holding that role can send this; any other wallet reverts with
+ * `AccessControlUnauthorizedAccount`. It is part of the fixed-term lifecycle,
+ * but operations runs it — not the position's owner, and not a frontend.
  */
 export async function buildBrokerRefinanceMaturedSteps(
   params: BuildBrokerRefinanceMaturedParams,
