@@ -90,7 +90,32 @@ export function calculateDynamicLoanRepayment(
 }
 
 /**
+ * Seconds of forward interest pre-charged onto a fixed-position repayment.
+ *
+ * The twin above does the same thing with a 10% margin on the interest, and
+ * for the same reason: a quote is computed at one moment and settles at
+ * another, interest accrues in between, and the broker spends a repayment
+ * interest first — so a figure that was exact when quoted lands short, leaves
+ * the shortfall on the principal, and `_validateFixedPosition` rejects any
+ * remainder below `minLoan`. Over-paying costs nothing: `repayFixed` ends in
+ * `_refundExcess` and hands the surplus straight back.
+ *
+ * Twenty minutes matches the margin the reference frontend pre-charges on the
+ * flexible leg. It is deliberately a *time* margin rather than a percentage,
+ * because what goes stale here is elapsed time.
+ */
+export const REPAY_BUFFER_SECONDS = 20n * 60n;
+
+/**
  * Calculate the total repayment amount for a fixed loan position including interest and penalty
+ *
+ * `interest` and `penalty` are the exact figures the contract charges at
+ * `currentTime` — show those. `totalRepay` is what to **send**: the same
+ * figures plus {@link REPAY_BUFFER_SECONDS} of forward interest, so a quote
+ * that sits in a form for a few minutes still clears the position. The surplus
+ * is refunded on-chain, so the two are not interchangeable and the buffered one
+ * is the safe default for sizing a transaction.
+ *
  * @param position - The fixed loan position data
  * @param position.principal - Total principal amount borrowed
  * @param position.principalRepaid - Amount already repaid (must be <= principal)
@@ -98,12 +123,15 @@ export function calculateDynamicLoanRepayment(
  * @param position.start - Loan start timestamp in seconds
  * @param position.end - Loan maturity timestamp in seconds
  * @param currentTime - Current timestamp in seconds (optional, defaults to current 10-minute block + 10 minutes buffer)
+ * @param loanDecimals - The decimals of the loan token
+ * @param bufferSeconds - Forward interest to pre-charge onto `totalRepay`; pass `0n` for the exact figure
  * @returns Object containing total repay amount and breakdown of principal, interest, and penalty
  */
 export function calculateFixedLoanRepayment(
   position: FixedLoanPosition,
   currentTime?: bigint,
   loanDecimals = 18,
+  bufferSeconds = REPAY_BUFFER_SECONDS,
 ): FixedLoanRepaymentResult {
   const remainingPrincipal = position.principal - position.principalRepaid;
 
@@ -124,8 +152,9 @@ export function calculateFixedLoanRepayment(
   // the broker spends it interest first — so a figure short by even one wei
   // leaves that wei on the principal, and `_validateFixedPosition` requires
   // the remainder to be zero or above `minLoan`. A one-wei shortfall reverts
-  // `broker/fixed-below-min-loan`. Measured: a matured 1000-token position at
-  // 5% quoted 32 wei short of what the contract charges.
+  // `broker/fixed-below-min-loan`. Measured at live parameters: one wei short
+  // at maturity. The forward margin below is what actually keeps a quote
+  // viable; this only removes a floor that was working against it.
   const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
     numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator;
 
@@ -178,9 +207,10 @@ export function calculateFixedLoanRepayment(
   // did not cap `repayAmt` at the remaining principal. It does
   // (`previewRepayFixedLoanPosition`), and any amount large enough to clear
   // the position is above that cap, so the cap always binds and the inversion
-  // only ever over-quoted: 1.33x the real penalty at 30% APR on a fresh
-  // one-year term — 200 tokens quoted against 150 actually charged, on a
-  // 1000-token position.
+  // only ever over-quoted. The margin depends sharply on the parameters:
+  // 1.33x at 30% APR on a one-year term, but 1.0001x–1.006x at every APR and
+  // term any live market actually runs. It read as a safety cushion and was
+  // not one — a cushion is what `REPAY_BUFFER_SECONDS` provides deliberately.
   let penalty = 0n;
   if (now < position.end) {
     const timeLeft = position.end - now;
@@ -190,7 +220,21 @@ export function calculateFixedLoanRepayment(
     );
   }
 
-  const totalRepayBigInt = remainingPrincipal + interestAmount + penalty;
+  // The margin covers forward *interest* only. The penalty moves the other way
+  // — it shrinks as `timeLeft` does — so the figure quoted now is already above
+  // what the contract will charge when the transaction lands, and buffering it
+  // forward would quote less, not more. Past maturity nothing accrues at all,
+  // so the window is clamped to `end` and the margin there is correctly zero.
+  const bufferEnd = now + bufferSeconds;
+  const bufferUntil = bufferEnd < position.end ? bufferEnd : position.end;
+  const bufferWindow = bufferUntil > now ? bufferUntil - now : 0n;
+  const forwardInterest = ceilDiv(
+    remainingPrincipal * (interestPerSecond * bufferWindow),
+    RATE_SCALE_27,
+  );
+
+  const totalRepayBigInt =
+    remainingPrincipal + interestAmount + penalty + forwardInterest;
   const totalRepay = new Decimal(totalRepayBigInt, loanDecimals);
 
   return {

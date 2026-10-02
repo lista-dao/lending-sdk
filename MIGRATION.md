@@ -570,12 +570,29 @@ propagates so the caller can retry.
   partial repayment had already settled), it never stopped at `end` (so a
   matured position accrued without bound), it ignored `interestRepaid`, and
   the early-repayment penalty inverted the contract's formula instead of
-  transcribing it — 1.33x the real figure at 30% APR on a fresh one-year term.
-  Every division now ceils the way the contract's `Math.mulDiv` does: flooring
-  quoted a matured 1000-token position 32 wei short, which leaves dust on the
-  principal and reverts `broker/fixed-below-min-loan`. Expect smaller interest
-  on partially repaid and matured positions, and a smaller penalty on every
-  early repayment.
+  transcribing it. Every division now ceils the way the contract's
+  `Math.mulDiv` does.
+
+  Only the first of those has a large effect at parameters any live market
+  runs: a partially repaid position was quoted the whole settled window again,
+  which on a real 12.6M position meant 20,608 tokens of interest against the
+  14.88 actually owed. The penalty inversion is worth 1.0001x–1.006x on live
+  terms (7/14/30 days, 0.5%–10.2% APR) and only reaches the 1.33x that makes
+  it look dramatic at a 30% APR one-year term, which does not exist; the
+  rounding is worth one wei. Expect smaller interest on partially repaid
+  positions, and a slightly smaller penalty on every early repayment.
+
+- **`calculateFixedLoanRepayment`'s `totalRepay` now carries a 20-minute
+  forward-interest margin**, exported as `REPAY_BUFFER_SECONDS`, and
+  `interest` / `penalty` stay exact. Show the breakdown, send `totalRepay`.
+  The flexible twin has always pre-charged a margin for this reason — a quote
+  built now settles later, the broker spends a repayment interest first, and a
+  figure that was exact when quoted strands the shortfall on the principal
+  where `_validateFixedPosition` rejects anything under `minLoan`. The fixed
+  path never had one; the inverted penalty was accidentally standing in for it,
+  so correcting the maths without adding the margin would have made a stale
+  quote *more* likely to revert, not less. Pass `bufferSeconds: 0n` for the
+  exact figure.
 - **`isLiquidationMarketEnabled` takes an optional `borrower` and answers
   differently in both directions.** See section 11. It previously read only
   `PublicLiquidator.marketWhitelist`, which refused permissionless markets and
