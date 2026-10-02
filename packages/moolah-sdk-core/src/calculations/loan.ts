@@ -116,9 +116,42 @@ export function calculateFixedLoanRepayment(
   const rateMinusScale = normalizeAprRate(position.apr);
   const interestPerSecond = rateMinusScale / BigInt(ONE_YEAR_SECONDS);
 
-  // Calculate interest accrued
+  // Interest accrues over the window `BrokerMath.getAccruedInterestForFixedPosition`
+  // measures, which is neither `now - start` nor open-ended:
+  //
+  //  - it starts at `lastRepaidTime`, not `start`. The broker advances that
+  //    stamp and zeroes `interestRepaid` whenever principal is repaid, so
+  //    measuring from `start` re-charges every window already settled.
+  //  - it ends at `min(now, end)`. A matured position stops accruing; without
+  //    the cap the figure grows without bound for exactly the positions most
+  //    likely to be sitting unsettled.
+  //  - what is still owed is the accrual minus `interestRepaid`, which the
+  //    broker carries for interest paid without touching principal.
+  //
+  // Both stamps are clamped to `end` the same way the contract clamps them,
+  // and the subtraction is floored: the three fields are read at slightly
+  // different moments than the chain applies them, and a negative interest
+  // would turn into a discount on the repayment below.
+  // `lastRepaidTime` is floored at `start` as well as capped at `end`. The
+  // broker stamps it with `start` when the position is opened so it is never
+  // earlier on-chain, but a position assembled by hand — or read through an
+  // older shape that had no such field — arrives as zero, and measuring from
+  // the epoch would report an interest figure larger than the loan.
+  const floor =
+    position.lastRepaidTime > position.start
+      ? position.lastRepaidTime
+      : position.start;
+  const accrualEnd = now < position.end ? now : position.end;
+  const accrualStart = floor < position.end ? floor : position.end;
+  const accrualWindow =
+    accrualEnd > accrualStart ? accrualEnd - accrualStart : 0n;
+
+  const accruedInterest =
+    (interestPerSecond * remainingPrincipal * accrualWindow) / RATE_SCALE_27;
   const interestAmount =
-    (interestPerSecond * remainingPrincipal * duration) / RATE_SCALE_27;
+    accruedInterest > position.interestRepaid
+      ? accruedInterest - position.interestRepaid
+      : 0n;
 
   // Early-repayment penalty, if before maturity. Guarded on a positive rate:
   // a 0% term (or an apr supplied as a plain rate rather than 1 + rate)

@@ -21,14 +21,42 @@ const LIQUIDATOR = "0x882475d622c687b079f149B69a15683FCbeCC6D9" as const;
 const CHAIN = 56;
 
 /**
- * The liquidator gates on a per-market allowlist, so the mock has to answer
- * `marketWhitelist` as well as `allowance` — a single blanket value would make
- * every market look unlisted, which is in fact the live state on BSC.
+ * Liquidation is gated twice over, so the mock has to answer four reads, not
+ * one. `marketWhitelist` / `marketUserWhitelist` are the liquidator's own two
+ * openings; `isLiquidationWhitelist` is Moolah's, asked once with the zero
+ * address (is the market permissionless) and once with the liquidator (will
+ * Moolah accept it as the caller). A single blanket value makes every market
+ * look unlisted, which is in fact the live state on BSC.
  */
-const deps = (value: bigint | Address = 0n, whitelisted = true) => ({
+const deps = (
+  value: bigint | Address = 0n,
+  whitelisted = true,
+  gates: {
+    openToAnyone?: boolean;
+    borrowerListed?: boolean;
+    liquidatorAllowed?: boolean;
+  } = {},
+) => ({
   publicClient: {
-    readContract: vi.fn(async ({ functionName }: { functionName: string }) =>
-      functionName === "marketWhitelist" ? whitelisted : value,
+    readContract: vi.fn(
+      async ({
+        functionName,
+        args,
+      }: {
+        functionName: string;
+        args?: readonly unknown[];
+      }) => {
+        if (functionName === "marketWhitelist") return whitelisted;
+        if (functionName === "marketUserWhitelist")
+          return gates.borrowerListed ?? false;
+        if (functionName === "isLiquidationWhitelist") {
+          const account = String(args?.[1] ?? "").toLowerCase();
+          return account === "0x0000000000000000000000000000000000000000"
+            ? (gates.openToAnyone ?? false)
+            : (gates.liquidatorAllowed ?? true);
+        }
+        return value;
+      },
     ),
   } as unknown as PublicClient,
   network: "bsc" as const,
@@ -216,7 +244,50 @@ describe("the liquidator's market allowlist", () => {
         },
         deps(0n, false),
       ),
-    ).rejects.toThrow(/not on the public liquidator's allowlist/);
+    ).rejects.toThrow(/is not open to the public liquidator/);
+  });
+
+  // `isLiquidatable` is an OR of three, and the SDK used to read only the
+  // middle one. A permissionless market — Moolah's liquidation list empty —
+  // and a market opened for this one borrower were both refused, which is
+  // the opposite of the failure the check exists to prevent.
+  it.each([
+    ["permissionless market", { openToAnyone: true }],
+    ["a per-borrower opening", { borrowerListed: true }],
+  ])("builds for %s even with the market allowlist off", async (_, gates) => {
+    const steps = await buildLiquidateSteps(
+      {
+        chainId: CHAIN,
+        marketId: MARKET,
+        borrower: BORROWER,
+        walletAddress: USER,
+        loanToken: LOAN,
+        maxRepayAmount: 5000n,
+        seizedAssets: 1000n,
+      },
+      deps(0n, false, gates),
+    );
+    expect(steps.map((x) => x.step)).toContain("liquidate");
+  });
+
+  // The second layer: Moolah checks its own list against the *caller*, so a
+  // market the liquidator is willing to serve still reverts
+  // NOT_LIQUIDATION_WHITELIST when that list omits the liquidator.
+  it("refuses when Moolah's own list omits the liquidator", async () => {
+    await expect(
+      buildLiquidateSteps(
+        {
+          chainId: CHAIN,
+          marketId: MARKET,
+          borrower: BORROWER,
+          walletAddress: USER,
+          loanToken: LOAN,
+          maxRepayAmount: 5000n,
+          seizedAssets: 1000n,
+        },
+        deps(0n, true, { liquidatorAllowed: false }),
+      ),
+    ).rejects.toThrow(/is not open to the public liquidator/);
   });
 
   it("builds anyway when the caller opts in explicitly", async () => {

@@ -153,9 +153,9 @@ export async function sharesToAssetCeiling(
     typeof totalBorrowShares !== "bigint"
   ) {
     throw new Error(
-      "buildRepaySteps: could not read the market state to size a " +
-        "share-denominated repayment. Pass `assets` instead, or supply a " +
-        "publicClient that can reach Moolah.",
+      "sharesToAssetCeiling: could not read the market state to price " +
+        "borrow shares in loan tokens. Pass an asset amount instead, or " +
+        "supply a publicClient that can reach Moolah.",
     );
   }
   if (totalBorrowShares === 0n) {
@@ -164,9 +164,9 @@ export async function sharesToAssetCeiling(
     // price to quote, and returning 0 would emit no approval — reproducing
     // exactly the bug this function exists to fix.
     throw new Error(
-      "buildRepaySteps: the market has no borrow shares at all, so a " +
-        "share-denominated repayment cannot be priced. Check that the market " +
-        "config passed in describes the market you are repaying.",
+      "sharesToAssetCeiling: the market has no borrow shares at all, so " +
+        "borrow shares cannot be priced against it. Check that the market " +
+        "config passed in describes the market holding the debt.",
     );
   }
 
