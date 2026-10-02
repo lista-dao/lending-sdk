@@ -94,18 +94,50 @@ const toString = (
     : `${prefix}${integerStr}`;
 };
 
+/**
+ * A number to its raw units. Ported from lista-mono's
+ * `packages/shared/src/utils/fraction.ts`, and the only correct way to take a
+ * number here.
+ *
+ * It was ported, and then not called. `getFraction` and `Decimal.parse` both
+ * used `value.toFixed(DEFAULT_DECIMALS)` instead, which at 18 decimal places
+ * does not format the number you wrote — it expands the double you got.
+ * `(1234.56).toFixed(18)` is `"1234.559999999999945430"`, and since the
+ * formatters truncate rather than round, the missing fraction survived to the
+ * screen. Every arithmetic method on `Fraction` funnels its argument through
+ * `getFraction`, so `fraction.add(1234.56)` drifted too, not just parsing.
+ *
+ * `value.toString()` gives the shortest representation that uniquely
+ * identifies the double, which is the number the caller meant. It falls into
+ * exponential notation at the extremes and `parseUnits` will not take that,
+ * hence the mantissa/exponent branch.
+ *
+ * Checked against upstream value for value in `decimalParity.test.ts`. Keeping
+ * them identical matters more than any local improvement: an amount the SDK
+ * and the frontend disagree about is a bug neither can see, because each is
+ * self-consistent.
+ */
 export function parseNumber(value: number, decimals: number = 18): bigint {
-  // if value contains 'e', use scientific notation
+  // Additive divergence from upstream, where a non-finite value reaches
+  // `parseUnits` and throws "Number `NaN` is not a valid decimal number" —
+  // the same outcome, further from the caller. No finite value is affected.
+  if (!Number.isFinite(value)) {
+    throw new Error(
+      `parseNumber: ${value} is not a finite number. An amount must be a ` +
+        `string, a bigint, or a finite number.`,
+    );
+  }
+
   if (value.toString().includes("e")) {
     const [integer, fraction] = value.toString().split("e");
-    // integer is the integer part, fraction is the fractional part
     const integerValue = parseUnits(integer, decimals);
-    // exponent is the power of 10
     const exponentValue = Math.round(Number(fraction));
 
     if (exponentValue > 0) {
       return integerValue * 10n ** BigInt(exponentValue);
     }
+    // Truncates, as upstream does. Rounding an amount up is asking for more
+    // than the holder has, and the formatters truncate for the same reason.
     return integerValue / 10n ** BigInt(-exponentValue);
   }
 
@@ -183,10 +215,7 @@ export class Fraction {
           return new Fraction(BigInt(Math.round(arg1)), 1n);
         }
         return new Fraction(
-          parseUnits(
-            arg1.toFixed(Fraction.DEFAULT_DECIMALS),
-            Fraction.DEFAULT_DECIMALS,
-          ),
+          parseNumber(arg1, Fraction.DEFAULT_DECIMALS),
           getTenPower(Fraction.DEFAULT_DECIMALS),
         );
       }

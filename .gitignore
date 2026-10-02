@@ -7,3 +7,8 @@ coverage/
 .env.local
 .npmrc
 tsconfig.tsbuildinfo
+
+# OMX runtime state (plans, notes, logs)
+.omx/
+parity-report.json
+*.tsbuildinfo

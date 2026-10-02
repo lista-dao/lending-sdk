@@ -12,12 +12,18 @@ import type {
   ApiVaultHoldingsData,
   ApiMarketHoldingsData,
   ApiTableParams,
+  ApiGroupedMarketList,
+  ApiGroupedMarketListParams,
+  ApiLiquidationList,
+  ApiLiquidationListParams,
+  ApiCloseToLiquidateParams,
 } from "../types/api.js";
 import type { MarketInfo } from "../types/market.js";
-import { LISTA_API_URLS } from "../utils/apiChain.js";
+import { LISTA_API_URL } from "../utils/apiChain.js";
 
 const SUCCESS_CODE = "000000000";
 const API_PREFIX = "/api/moolah";
+const LIQUIDATION_PREFIX = "/api/liquidation/zone";
 
 export type FetchFn = typeof fetch;
 
@@ -37,7 +43,7 @@ export class MoolahApiClient {
   private fetchFn: FetchFn;
 
   constructor(config: MoolahApiClientConfig = {}) {
-    this.baseUrl = (config.baseUrl ?? LISTA_API_URLS.prod).replace(/\/$/, "");
+    this.baseUrl = (config.baseUrl ?? LISTA_API_URL).replace(/\/$/, "");
     this.fetchFn = config.fetch ?? fetch;
   }
 
@@ -86,9 +92,7 @@ export class MoolahApiClient {
   /**
    * Get vault list from API
    */
-  async getVaultList(
-    params: ApiVaultListParams,
-  ): Promise<ApiVaultList> {
+  async getVaultList(params: ApiVaultListParams): Promise<ApiVaultList> {
     const searchParams = new URLSearchParams();
     searchParams.set("page", String(params.page));
     searchParams.set("pageSize", String(params.pageSize));
@@ -102,7 +106,8 @@ export class MoolahApiClient {
 
     if (params.sort) searchParams.set("sort", params.sort);
     if (params.order) searchParams.set("order", params.order);
-    if (params.zone !== undefined) searchParams.set("zone", String(params.zone));
+    if (params.zone !== undefined)
+      searchParams.set("zone", String(params.zone));
     if (params.keyword) searchParams.set("keyword", params.keyword);
     for (const asset of params.assets ?? []) {
       if (asset) searchParams.append("assets[]", asset);
@@ -124,9 +129,7 @@ export class MoolahApiClient {
   /**
    * Get market list from API
    */
-  async getMarketList(
-    params: ApiMarketListParams,
-  ): Promise<ApiMarketList> {
+  async getMarketList(params: ApiMarketListParams): Promise<ApiMarketList> {
     const searchParams = new URLSearchParams();
     searchParams.set("page", String(params.page));
     searchParams.set("pageSize", String(params.pageSize));
@@ -140,7 +143,8 @@ export class MoolahApiClient {
 
     if (params.sort) searchParams.set("sort", params.sort);
     if (params.order) searchParams.set("order", params.order);
-    if (params.zone !== undefined) searchParams.set("zone", String(params.zone));
+    if (params.zone !== undefined)
+      searchParams.set("zone", String(params.zone));
     if (params.keyword) searchParams.set("keyword", params.keyword);
     for (const loan of params.loans ?? []) {
       if (loan) searchParams.append("loans[]", loan);
@@ -201,6 +205,86 @@ export class MoolahApiClient {
     return this.request<ApiMarketVaultList>(
       `${API_PREFIX}/market/vault/${marketId}`,
       Object.keys(searchParams).length > 0 ? searchParams : undefined,
+    );
+  }
+
+  /**
+   * Get the complete market catalogue, grouped by collateral.
+   *
+   * The difference from {@link getMarketList} is scope, not completeness. The
+   * flat endpoint is one zone at a time and defaults to zone 0, so a single
+   * call reports 193 of 461 markets on BSC and 11 of 26 on Ethereum — but
+   * summing its zones reaches exactly the grouped total on both chains.
+   * Nothing is missing from it; it just has to be asked seven times.
+   *
+   * Prefer this when you want the catalogue in one response, when you need a
+   * market's `loanToken` / `collateralToken` addresses or its
+   * `totalCollateral`, or when you need `collateralUiMultiplier` — that one
+   * hangs off the group, which the flat endpoint has no equivalent of. The
+   * flat list carries `smartCollateralConfig` too, and adds `vaults` and
+   * `loanIcon`, which the grouped one does not.
+   */
+  async getGroupedMarkets(
+    params: ApiGroupedMarketListParams = {},
+  ): Promise<ApiGroupedMarketList> {
+    const searchParams = new URLSearchParams();
+    if (params.page !== undefined)
+      searchParams.set("page", String(params.page));
+    if (params.pageSize !== undefined)
+      searchParams.set("pageSize", String(params.pageSize));
+    if (Array.isArray(params.chain)) {
+      const chains = params.chain.filter(Boolean);
+      if (chains.length > 0) searchParams.set("chain", chains.join(","));
+    } else if (params.chain) {
+      searchParams.set("chain", params.chain);
+    }
+    if (params.zone !== undefined)
+      searchParams.set("zone", String(params.zone));
+    if (params.sort) searchParams.set("sort", params.sort);
+    if (params.order) searchParams.set("order", params.order);
+    if (params.keyword) searchParams.set("keyword", params.keyword);
+
+    return this.request<ApiGroupedMarketList>(
+      `${API_PREFIX}/borrow/markets/grouped`,
+      searchParams,
+    );
+  }
+
+  /**
+   * Get positions that are currently liquidatable.
+   *
+   * Returns an empty list whenever the protocol is healthy, which is most of
+   * the time — an empty result is not an error. For a working set to monitor,
+   * use {@link getCloseToLiquidate}.
+   */
+  async getLiquidationList(
+    params: ApiLiquidationListParams = {},
+  ): Promise<ApiLiquidationList> {
+    return this.request<ApiLiquidationList>(`${LIQUIDATION_PREFIX}/list`, {
+      page: params.page ?? 1,
+      pageSize: params.pageSize ?? 20,
+      sort: params.sort ?? "discountRate",
+      order: params.order ?? "desc",
+    });
+  }
+
+  /** Get positions approaching the liquidation threshold. */
+  async getCloseToLiquidate(
+    params: ApiCloseToLiquidateParams = {},
+  ): Promise<ApiLiquidationList> {
+    const searchParams = new URLSearchParams();
+    searchParams.set("page", String(params.page ?? 1));
+    searchParams.set("pageSize", String(params.pageSize ?? 20));
+    if (params.userAddress) searchParams.set("userAddress", params.userAddress);
+    if (params.loanInUsd !== undefined)
+      searchParams.set("loanInUsd", String(params.loanInUsd));
+    for (const collateral of params.collaterals ?? []) {
+      if (collateral) searchParams.append("collaterals[]", collateral);
+    }
+
+    return this.request<ApiLiquidationList>(
+      `${LIQUIDATION_PREFIX}/closeToLiquidate`,
+      searchParams,
     );
   }
 }
