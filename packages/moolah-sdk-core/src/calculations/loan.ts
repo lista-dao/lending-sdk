@@ -109,12 +109,29 @@ export function calculateFixedLoanRepayment(
 
   const now = currentTime ?? getCurrentRoundedTimestamp();
 
-  const duration = now - position.start;
-  const termDuration = position.end - position.start;
+  // Both stamps are read through `?? 0n` for the same reason the start floor
+  // below exists: this is a public export of a package that ships JavaScript,
+  // so a position assembled by hand — or read through an older shape that had
+  // neither field — arrives with them missing. `bigint` arithmetic against
+  // `undefined` throws, and a comparison against it is silently false, which
+  // would report a position's whole accrued interest as zero.
+  const lastRepaidTime = position.lastRepaidTime ?? 0n;
+  const interestRepaid = position.interestRepaid ?? 0n;
 
-  // Calculate APR minus 1 (stored as 1 + rate)
+  // The contract divides up, every time: `_aprPerSecond` ceils, and so does
+  // each `Math.mulDiv` built on it. Flooring here is not the harmless dust it
+  // looks like. `totalRepay` is what a caller sends to clear the position, and
+  // the broker spends it interest first — so a figure short by even one wei
+  // leaves that wei on the principal, and `_validateFixedPosition` requires
+  // the remainder to be zero or above `minLoan`. A one-wei shortfall reverts
+  // `broker/fixed-below-min-loan`. Measured: a matured 1000-token position at
+  // 5% quoted 32 wei short of what the contract charges.
+  const ceilDiv = (numerator: bigint, denominator: bigint): bigint =>
+    numerator === 0n ? 0n : (numerator + denominator - 1n) / denominator;
+
+  // Calculate APR minus 1 (stored as 1 + rate), per second, the contract's way
   const rateMinusScale = normalizeAprRate(position.apr);
-  const interestPerSecond = rateMinusScale / BigInt(ONE_YEAR_SECONDS);
+  const interestPerSecond = ceilDiv(rateMinusScale, BigInt(ONE_YEAR_SECONDS));
 
   // Interest accrues over the window `BrokerMath.getAccruedInterestForFixedPosition`
   // measures, which is neither `now - start` nor open-ended:
@@ -129,42 +146,48 @@ export function calculateFixedLoanRepayment(
   //    broker carries for interest paid without touching principal.
   //
   // Both stamps are clamped to `end` the same way the contract clamps them,
-  // and the subtraction is floored: the three fields are read at slightly
-  // different moments than the chain applies them, and a negative interest
+  // and the subtraction is floored at zero: the fields are read at a slightly
+  // different moment than the chain applies them, and a negative interest
   // would turn into a discount on the repayment below.
-  // `lastRepaidTime` is floored at `start` as well as capped at `end`. The
-  // broker stamps it with `start` when the position is opened so it is never
-  // earlier on-chain, but a position assembled by hand — or read through an
-  // older shape that had no such field — arrives as zero, and measuring from
-  // the epoch would report an interest figure larger than the loan.
+  //
+  // `lastRepaidTime` is floored at `start` as well. The broker stamps it with
+  // `start` when the position is opened so it is never earlier on-chain; the
+  // floor only guards the hand-assembled case, where measuring from the epoch
+  // would report an interest figure larger than the loan.
   const floor =
-    position.lastRepaidTime > position.start
-      ? position.lastRepaidTime
-      : position.start;
+    lastRepaidTime > position.start ? lastRepaidTime : position.start;
   const accrualEnd = now < position.end ? now : position.end;
   const accrualStart = floor < position.end ? floor : position.end;
   const accrualWindow =
     accrualEnd > accrualStart ? accrualEnd - accrualStart : 0n;
 
-  const accruedInterest =
-    (interestPerSecond * remainingPrincipal * accrualWindow) / RATE_SCALE_27;
+  const accruedInterest = ceilDiv(
+    remainingPrincipal * (interestPerSecond * accrualWindow),
+    RATE_SCALE_27,
+  );
   const interestAmount =
-    accruedInterest > position.interestRepaid
-      ? accruedInterest - position.interestRepaid
-      : 0n;
+    accruedInterest > interestRepaid ? accruedInterest - interestRepaid : 0n;
 
-  // Early-repayment penalty, if before maturity. Guarded on a positive rate:
-  // a 0% term (or an apr supplied as a plain rate rather than 1 + rate)
-  // normalizes to zero and would divide by it, throwing a RangeError out of
-  // every caller rather than reporting a zero penalty.
+  // Early-repayment penalty, straight from `getPenaltyForFixedPosition`:
+  //
+  //     ceil(ceil(repayAmt * aprPerSecond / SCALE) * timeLeft / 2)
+  //
+  // with `repayAmt` the principal being cleared. This used to invert the
+  // contract instead — solving for the amount to send on the assumption the
+  // penalty is charged on that amount — which would be right if the contract
+  // did not cap `repayAmt` at the remaining principal. It does
+  // (`previewRepayFixedLoanPosition`), and any amount large enough to clear
+  // the position is above that cap, so the cap always binds and the inversion
+  // only ever over-quoted: 1.33x the real penalty at 30% APR on a fresh
+  // one-year term — 200 tokens quoted against 150 actually charged, on a
+  // 1000-token position.
   let penalty = 0n;
-  if (interestPerSecond > 0n && duration < termDuration) {
-    const remainingDuration = termDuration - duration;
-    const denominator =
-      (2n * RATE_SCALE_27) / remainingDuration / interestPerSecond - 1n;
-    if (denominator > 0n) {
-      penalty = remainingPrincipal / denominator;
-    }
+  if (now < position.end) {
+    const timeLeft = position.end - now;
+    penalty = ceilDiv(
+      ceilDiv(remainingPrincipal * interestPerSecond, RATE_SCALE_27) * timeLeft,
+      2n,
+    );
   }
 
   const totalRepayBigInt = remainingPrincipal + interestAmount + penalty;

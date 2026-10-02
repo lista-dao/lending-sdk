@@ -185,25 +185,39 @@ export async function buildMigrateToFixedTermSteps(
   const { publicClient, network } = deps;
   const positionManager = getContractAddress(network, "positionManager");
 
-  // The target market has to be able to fund the new borrow. It is checked
-  // here, before the authorization, because of the asymmetry between the two
-  // steps: the grant is standing and lands first, the migration reverts
-  // `insufficient liquidity` second, and what the caller is left holding is an
-  // authorization they never got any use out of. `reversalSteps` on the grant
-  // makes that recoverable; not reaching it at all is better.
-  const [isAuthorized, inMarket] = await Promise.all([
+  // What the target market has to offer is checked here, before the
+  // authorization, because of the asymmetry between the two steps: the grant
+  // is standing and lands first, the migration reverts second, and what the
+  // caller is left holding is an authorization they never got any use out of.
+  // `reversalSteps` on the grant makes that recoverable; not reaching it is
+  // better.
+  //
+  // These two are the common misconfigurations, not every one. Still reverting
+  // after the grant: a `termId` the target broker does not serve, a borrower
+  // not on the market's own whitelist, a remainder under `minLoan`, and a
+  // `collateralAmount` above what the source position holds. Each needs a read
+  // this builder does not make yet. The reversal step is what covers them.
+  const inId = marketIdOf(inn);
+  const moolah = getContractAddress(network, "moolah");
+  const [isAuthorized, inMarket, inBroker] = await Promise.all([
     publicClient.readContract({
-      address: getContractAddress(network, "moolah"),
+      address: moolah,
       abi: MOOLAH_ABI,
       functionName: "isAuthorized",
       args: [params.walletAddress, positionManager],
     }) as Promise<boolean>,
     publicClient.readContract({
-      address: getContractAddress(network, "moolah"),
+      address: moolah,
       abi: MOOLAH_ABI,
       functionName: "market",
-      args: [marketIdOf(inn)],
+      args: [inId],
     }) as Promise<readonly bigint[]>,
+    publicClient.readContract({
+      address: moolah,
+      abi: MOOLAH_ABI,
+      functionName: "brokers",
+      args: [inId],
+    }) as Promise<Address>,
   ]);
 
   // Same tell `supplySharesToAssetCeiling` uses: a market that was never
@@ -211,14 +225,31 @@ export async function buildMigrateToFixedTermSteps(
   // only field that separates it from a genuinely empty one.
   if (inMarket?.[4] === 0n) {
     throw new Error(
-      `buildMigrateToFixedTermSteps: the target market ${marketIdOf(inn)} has ` +
-        `never been created. Check the fixed-term market config.`,
+      `buildMigrateToFixedTermSteps: the target market ${inId} has never been ` +
+        `created. Check the fixed-term market config.`,
     );
   }
+
+  // `PositionManager.onMoolahFlashLoan` takes the new fixed-term debt out
+  // through `MOOLAH.brokers(inMarket.id())` and reverts `no-broker-for-market`
+  // on the zero address. A plain variable-rate market passed as the target
+  // reaches exactly that.
+  if (inBroker === ZERO_ADDRESS) {
+    throw new Error(
+      `buildMigrateToFixedTermSteps: the target market ${inId} has no broker ` +
+        `registered, so there is no fixed term to migrate into. Check that ` +
+        `the target is a fixed-term market.`,
+    );
+  }
+
   // A share-denominated migration says "all of it" in the source market's
   // units, so it has to be priced there before it can be compared against the
-  // target's liquidity. The ceiling carries headroom, which makes this check
-  // conservative — the right direction for a pre-flight.
+  // target's liquidity — the same conversion `PositionManager` makes before it
+  // opens the flash loan. Priced without the allowance headroom: on a
+  // threshold that margin is not free caution, it refuses every migration
+  // sitting inside it. What remains is that the source market's state is as of
+  // its last accrual, so the figure is a slight under-estimate — enough to
+  // catch a market with no liquidity, not enough to arbitrate a close call.
   const borrowSize =
     borrowShares > 0n
       ? await sharesToAssetCeiling(
@@ -226,13 +257,14 @@ export async function buildMigrateToFixedTermSteps(
           params.outMarket,
           publicClient,
           network,
+          false,
         )
       : borrowAmount;
 
   const available = (inMarket?.[0] ?? 0n) - (inMarket?.[2] ?? 0n);
   if (available < borrowSize) {
     throw new Error(
-      `buildMigrateToFixedTermSteps: the target market ${marketIdOf(inn)} has ` +
+      `buildMigrateToFixedTermSteps: the target market ${inId} has ` +
         `${available} loan tokens available and this migration needs ` +
         `${borrowSize}, so it would revert after the authorization had ` +
         `already landed. Wait for liquidity, or migrate a smaller amount.`,

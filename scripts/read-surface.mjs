@@ -364,9 +364,11 @@ async function liquidationReads() {
   const candidate = (feed?.list ?? [])[0];
   const marketId = candidate?.marketId ?? candidate?.id ?? MARKET;
 
+  const borrower = candidate?.borrower ?? candidate?.user;
+
   await probe(
-    "isLiquidationMarketEnabled answers from the liquidator's allowlist",
-    () => sdk.isLiquidationMarketEnabled(CHAIN, marketId),
+    "isLiquidationMarketEnabled answers from both gating contracts",
+    () => sdk.isLiquidationMarketEnabled(CHAIN, marketId, borrower),
     (d) => ({
       ok: typeof d === "boolean",
       detail: `${marketId?.slice?.(0, 12)}… -> ${d}`,

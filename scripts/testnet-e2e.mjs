@@ -405,16 +405,27 @@ async function main() {
         `${debtBefore} -> ${debtAfterBorrow}`,
       );
 
-      const before = await sdk.getBrokerUserPositions(
-        CHAIN_ID,
-        broker,
-        account.address,
+      // `dynamicOutstanding` is null whenever the flexible leg reads as empty,
+      // and these nodes are load-balanced enough to answer from a block before
+      // the borrow landed. Settle on it rather than dereferencing whatever the
+      // first node happened to say — `record` does not abort, so without this
+      // the conversion below dies with a TypeError instead of reporting the
+      // failure the harness is here to report.
+      const before = await settle(
+        () => sdk.getBrokerUserPositions(CHAIN_ID, broker, account.address),
+        (d) => (d.dynamicOutstanding?.numerator ?? 0n) > 0n,
       );
+      const dynamicBefore = before.dynamicOutstanding?.numerator ?? 0n;
       record(
         "the flexible leg is visible in the SDK's position read",
-        (before.dynamicOutstanding?.numerator ?? 0n) > 0n,
+        dynamicBefore > 0n,
         `dynamic ${before.dynamicOutstanding?.toString() ?? "0"}`,
       );
+      if (dynamicBefore === 0n) {
+        throw new Error(
+          "the flexible leg never appeared, so there is nothing to convert",
+        );
+      }
 
       // 3. move the whole flexible leg into the shortest term
       //
@@ -434,7 +445,7 @@ async function main() {
         await sdk.buildConvertDynamicToFixedParams({
           chainId: CHAIN_ID,
           brokerAddress: broker,
-          amount: before.dynamicOutstanding.numerator,
+          amount: dynamicBefore,
           termId: shortest.termId,
         }),
       );
