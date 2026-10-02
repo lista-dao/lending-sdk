@@ -70,7 +70,7 @@ const FIXED_TERM_MARKET = {
 /**
  * Enough to clear the market's minimum loan without tying up the account.
  * The market rejects a position below `minLoan`, so borrowing a token amount
- * that looks reasonable in isolation reverts with broker/positions-below-min-loan.
+ * that looks reasonable in isolation reverts with broker/fixed-below-min-loan.
  */
 const COLLATERAL_TO_SUPPLY = 2n * 10n ** 17n; // 0.2 slisBNB
 const AMOUNT_TO_BORROW = 20n * 10n ** 18n; // 20 USDT
@@ -420,21 +420,21 @@ async function main() {
       //
       // Deliberately all of it: a conversion leaves two legs and the market
       // rejects either below its minimum loan, so splitting a position sized
-      // near the minimum reverts with broker/positions-below-min-loan.
+      // near the minimum reverts with broker/dynamic-below-min-loan.
       const shortest = terms.reduce((a, b) =>
         a.durationSeconds < b.durationSeconds ? a : b,
       );
-      // The principal, not `dynamicOutstanding`. The latter is principal plus
-      // accrued interest, and the conversion is denominated in principal — so
-      // passing it asks to convert slightly more than exists and reverts,
-      // intermittently, depending on how far the contract's own accrual has
-      // caught up. A flaky harness for the same reason an integrator's flow
-      // would be flaky.
+      // `dynamicOutstanding`, not the principal. The contract spends `amount`
+      // interest first, so a principal-sized figure converts principal minus
+      // the accrued interest and strands the rest on the flexible leg, under
+      // the market minimum — broker/dynamic-below-min-loan. Overshooting is
+      // clamped, so this is also what absorbs accrual between build and
+      // inclusion.
       await run(
         await sdk.buildConvertDynamicToFixedParams({
           chainId: CHAIN_ID,
           brokerAddress: broker,
-          amount: before.dynamicPosition.principal,
+          amount: before.dynamicOutstanding.numerator,
           termId: shortest.termId,
         }),
       );

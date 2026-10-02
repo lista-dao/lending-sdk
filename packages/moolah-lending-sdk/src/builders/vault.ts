@@ -166,6 +166,16 @@ export async function buildVaultWithdrawSteps(
   let shares = params.shares;
   const assets = params.assets;
 
+  // The union makes supplying both a compile error, but the package ships
+  // JavaScript too. Without this the `shares` branch below wins and `assets`
+  // is dropped on the floor — a redeem reported as the withdrawal that was
+  // asked for. `resolveAssetsOrShares` guards the market twin the same way.
+  if (shares !== undefined && assets !== undefined) {
+    throw new Error(
+      "buildVaultWithdrawSteps: pass exactly one of `assets` or `shares`",
+    );
+  }
+
   if (params.withdrawAll) {
     // Without the position there is nothing to resolve "all" to. Falling
     // through used to withdraw whatever `assets` happened to carry instead —

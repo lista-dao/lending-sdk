@@ -32,9 +32,22 @@ const market = (over: Partial<WriteMarketConfig["params"]> = {}) =>
     },
   }) as unknown as WriteMarketConfig;
 
-const deps = (isAuthorized: boolean) => ({
+/**
+ * `[totalSupplyAssets, totalSupplyShares, totalBorrowAssets,
+ * totalBorrowShares, lastUpdate, fee]`. Borrow assets and shares are 1:1 so a
+ * share-denominated migration prices back to its own figure, and supply is far
+ * above it so the liquidity check passes unless a test says otherwise.
+ */
+const MARKET_STATE = [1_000_000n, 1_000_000n, 1_000n, 1_000n, 1n, 0n] as const;
+
+const deps = (
+  isAuthorized: boolean,
+  marketState: readonly bigint[] = MARKET_STATE,
+) => ({
   publicClient: {
-    readContract: vi.fn().mockResolvedValue(isAuthorized),
+    readContract: vi.fn(({ functionName }: { functionName: string }) =>
+      Promise.resolve(functionName === "market" ? marketState : isAuthorized),
+    ),
   } as unknown as PublicClient,
   network: "bsc" as const,
 });
@@ -115,6 +128,24 @@ describe("migration to a fixed-term market", () => {
   it("carries no reversal on the migration itself, which leaves nothing standing", async () => {
     const steps = await buildMigrateToFixedTermSteps(base, deps(false));
     expect(steps[1].meta?.reversalSteps).toBeUndefined();
+  });
+
+  // The two steps are not atomic with each other: the grant lands, then the
+  // migration reverts `insufficient liquidity`, and the caller is left with a
+  // standing authorization they got nothing out of. Refusing before step 0 is
+  // built is the only way not to reach that state at all.
+  it("refuses before the authorization when the target market is dry", async () => {
+    const dry = [1_000n, 1_000n, 1_000n, 1_000n, 1n, 0n] as const;
+    await expect(
+      buildMigrateToFixedTermSteps(base, deps(false, dry)),
+    ).rejects.toThrow(/loan tokens available and this migration needs/);
+  });
+
+  it("refuses a target market that was never created", async () => {
+    const uncreated = [0n, 0n, 0n, 0n, 0n, 0n] as const;
+    await expect(
+      buildMigrateToFixedTermSteps(base, deps(true, uncreated)),
+    ).rejects.toThrow(/has never been created/);
   });
 
   it("encodes both market tuples, the amounts and the term", async () => {

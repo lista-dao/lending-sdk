@@ -199,6 +199,70 @@ describe("calculateFixedLoanRepayment", () => {
     expect(result.interest).toBe(0n);
   });
 
+  // `BrokerMath.getAccruedInterestForFixedPosition` measures from
+  // `lastRepaidTime`, which the broker advances every time principal is repaid
+  // — and zeroes `interestRepaid` at the same moment. Measuring from `start`
+  // re-charges every window the borrower has already settled, so the figure an
+  // integrator shows, and sizes a repayment from, comes out high.
+  it("accrues from lastRepaidTime, not the loan's start", () => {
+    const halfway = (basePosition.start + basePosition.end) / 2n;
+    const quarter = (basePosition.start + halfway) / 2n;
+
+    const fromStart = calculateFixedLoanRepayment(basePosition, halfway);
+    const sinceRepaid = calculateFixedLoanRepayment(
+      { ...basePosition, lastRepaidTime: quarter },
+      halfway,
+    );
+
+    // Same principal, half the window: half the interest, give or take the
+    // rounding on an odd number of seconds.
+    expect(sinceRepaid.interest).toBeLessThan(fromStart.interest);
+    expect(sinceRepaid.interest * 2n).toBeGreaterThan(
+      (fromStart.interest * 99n) / 100n,
+    );
+  });
+
+  // The contract caps the window at `end`. Without that an overdue position —
+  // exactly the kind left sitting unsettled — accrues without bound.
+  it("stops accruing at maturity", () => {
+    const atMaturity = calculateFixedLoanRepayment(
+      basePosition,
+      basePosition.end,
+    );
+    const longOverdue = calculateFixedLoanRepayment(
+      basePosition,
+      basePosition.end + 86400n * 365n,
+    );
+
+    expect(longOverdue.interest).toBe(atMaturity.interest);
+  });
+
+  // Interest repaid without touching principal leaves `lastRepaidTime` where
+  // it was and accumulates in `interestRepaid`; what is still owed is the
+  // difference.
+  it("subtracts interest already repaid", () => {
+    const halfway = (basePosition.start + basePosition.end) / 2n;
+    const gross = calculateFixedLoanRepayment(basePosition, halfway).interest;
+    const paid = gross / 3n;
+
+    const net = calculateFixedLoanRepayment(
+      { ...basePosition, interestRepaid: paid },
+      halfway,
+    ).interest;
+
+    expect(net).toBe(gross - paid);
+  });
+
+  it("floors at zero when more interest is recorded than accrued", () => {
+    const halfway = (basePosition.start + basePosition.end) / 2n;
+    const result = calculateFixedLoanRepayment(
+      { ...basePosition, interestRepaid: 10n ** 30n },
+      halfway,
+    );
+
+    expect(result.interest).toBe(0n);
+  });
+
   it("should use current rounded timestamp if not provided", () => {
     vi.useFakeTimers();
     vi.setSystemTime(

@@ -759,9 +759,11 @@ export class MoolahSDK {
   /**
    * Build a standalone ERC-20 approval.
    *
-   * The action builders emit their own approvals, so this is for the cases
-   * they cannot cover: pre-approving with headroom, or clearing an allowance.
-   * Emits nothing when the existing allowance already suffices.
+   * The action builders emit their own approvals, so this is for the one case
+   * they cannot cover: pre-approving with headroom. Emits nothing when the
+   * existing allowance already suffices — which includes `amount: 0n`, so
+   * this is not the way to clear an allowance. Use `buildClearAllowanceStep`
+   * from `@lista-dao/moolah-lending-sdk/builders` for that.
    */
   async buildApproveParams(params: {
     chainId: ChainId;
@@ -1212,19 +1214,29 @@ export class MoolahSDK {
   }
 
   /**
-   * Is this market enabled on the public liquidator?
+   * Can this position be liquidated through the public liquidator?
    *
-   * The liquidator serves an admin-curated allowlist and refuses everything
-   * else with `NotWhitelisted()`. Check this before offering the action.
+   * Two contracts gate it — the liquidator's own three-way check and Moolah's
+   * check on the liquidator as caller — and both are read here. Pass
+   * `borrower` to include the per-borrower opening; without it the answer is
+   * only "is this market open to anyone", which under-reports.
+   *
+   * Check this before offering the action: the alternative is a bare
+   * `NotWhitelisted()` selector after the gas has been spent.
    */
   async isLiquidationMarketEnabled(
     chainId: ChainId,
     marketId: `0x${string}`,
+    borrower?: Address,
   ): Promise<boolean> {
-    return isLiquidationMarketEnabled(marketId, {
-      publicClient: this.getPublicClient(chainId),
-      network: this.getNetwork(chainId),
-    });
+    return isLiquidationMarketEnabled(
+      marketId,
+      {
+        publicClient: this.getPublicClient(chainId),
+        network: this.getNetwork(chainId),
+      },
+      borrower,
+    );
   }
 
   /**
@@ -1409,7 +1421,17 @@ export class MoolahSDK {
     );
   }
 
-  /** Roll matured fixed-term positions into fresh terms. */
+  /**
+   * Settle matured fixed-term positions back onto the flexible leg.
+   *
+   * No new term is opened — after this the matured leg is gone and the debt
+   * sits on the dynamic position. Read the position back rather than looking
+   * for a fresh term id.
+   *
+   * **Operator-only.** `refinanceMaturedFixedPositions` carries
+   * `onlyRole(BOT)` on the broker, so this is here for the scheduled job that
+   * holds that role; any other wallet reverts. Not a user-facing action.
+   */
   async buildBrokerRefinanceMaturedParams(
     params: BuildBrokerRefinanceMaturedParams,
   ): Promise<StepParam[]> {

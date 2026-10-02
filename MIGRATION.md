@@ -536,12 +536,15 @@ propagates so the caller can retry.
 - **A zero-valued vault withdrawal is refused** rather than encoded. `withdraw(0)`
   and `redeem(0)` succeed, settle nothing, and make an
   `after - before === requested` check true on both sides.
-- **`buildConvertDynamicToFixedParams` takes principal, not outstanding.** The
-  docstring did not say which, and `dynamicOutstanding` — the obvious value to
-  reach for, since it is what `getBrokerUserPositions` puts in front of you — is
-  principal plus accrued interest. Passing it asks to convert more than the leg
-  holds and reverts, but only sometimes, depending on how far the contract's own
-  accrual has caught up. Use `dynamicPosition.principal`.
+- **`buildConvertDynamicToFixedParams` takes outstanding, not principal.** The
+  docstring did not say which, and said principal when it was finally made
+  explicit. The contract spends `amount` interest first
+  (`BrokerMath.previewConvertDynamicToFixed`), so a principal-sized figure
+  converts principal minus the accrued interest and strands the rest on the
+  flexible leg — under the market minimum, which reverts
+  `broker/dynamic-below-min-loan`. Pass `dynamicOutstanding` from
+  `getBrokerUserPositions`; both legs are clamped, so headroom above it is
+  safe and absorbs accrual between building and inclusion.
 - **`buildBrokerRefinanceMaturedParams` does not open a fresh fixed term.** The
   docstring said it rolled a matured position into a new one. The balance
   returns to the **flexible leg**: after refinancing, the
