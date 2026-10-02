@@ -299,16 +299,28 @@ the approve step carries its own reversal — tune it with `approvalBufferBps`.
 
 ### Liquidation
 
-The public liquidator serves an **admin-curated allowlist of markets** and
-refuses everything else with `NotWhitelisted()`. This is the common case, not
-the corner case: at the time of writing not one of the thirteen distinct markets
-in the "close to liquidation" feed on BSC was enabled. `buildLiquidateParams`
-checks `isLiquidationMarketEnabled` first and refuses rather than handing you a
-call that can only revert — pass `allowUnlistedMarket` to build it anyway.
+A public liquidation is gated **twice over**, and a market has to clear both:
+
+- `PublicLiquidator.isLiquidatable` opens on any one of three — the market's
+  Moolah liquidation list is empty, the market is on the liquidator's own
+  allowlist, or this one borrower is. It reverts `NotWhitelisted()` otherwise.
+- `Moolah.liquidate` then checks **its caller** against the same market's
+  list, so a market the liquidator is willing to serve still reverts
+  `NOT_LIQUIDATION_WHITELIST` when that list is non-empty and omits the
+  liquidator.
+
+Refusal is the common case, not the corner case: at the time of writing not one
+of the thirteen distinct markets in the "close to liquidation" feed on BSC was
+open. `buildLiquidateParams` reads both gates first and refuses rather than
+handing you a call that can only revert — pass `allowUnlistedMarket` to build
+it anyway.
+
+Pass `borrower` when you ask directly. Without it the per-borrower opening
+cannot be seen and the answer under-reports.
 
 ```typescript
 const targets = await sdk.getCloseToLiquidate({ page: 1, pageSize: 20 });
-if (!(await sdk.isLiquidationMarketEnabled(56, marketId))) return;
+if (!(await sdk.isLiquidationMarketEnabled(56, marketId, borrower))) return;
 const cost = await sdk.quoteLiquidationCost({
   chainId: 56,
   marketId,

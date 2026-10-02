@@ -506,9 +506,12 @@ export type BuildLiquidateParams = {
    */
   maxRepayAmount: bigint;
   /**
-   * Build the call even though the market is not on the public liquidator's
-   * allowlist. Without this the builder refuses, because the call would revert
-   * with `NotWhitelisted()`.
+   * Build the call even though the market is not open to the public
+   * liquidator. Without this the builder refuses, because the call would
+   * revert — `NotWhitelisted()` from the liquidator, or
+   * `NOT_LIQUIDATION_WHITELIST` from Moolah when the market's own liquidation
+   * list omits the liquidator. This bypasses both checks, so it is only useful
+   * when you expect the gate to open before the transaction lands.
    */
   allowUnlistedMarket?: boolean;
   /** Keep the leftover allowance instead of returning it to zero. */

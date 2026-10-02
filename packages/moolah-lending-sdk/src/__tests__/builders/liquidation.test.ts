@@ -273,6 +273,48 @@ describe("the liquidator's market allowlist", () => {
   // The second layer: Moolah checks its own list against the *caller*, so a
   // market the liquidator is willing to serve still reverts
   // NOT_LIQUIDATION_WHITELIST when that list omits the liquidator.
+  // Which account each list is asked about is the load-bearing detail, and a
+  // boolean outcome does not pin it. `Moolah.liquidate` gates on `msg.sender`,
+  // which is the liquidator — probing with the caller's wallet or the borrower
+  // compiles, passes every outcome assertion, and is wrong.
+  it("asks Moolah about the liquidator and the zero address, and the liquidator about the borrower", async () => {
+    const d = deps(0n);
+    await buildLiquidateSteps(
+      {
+        chainId: CHAIN,
+        marketId: MARKET,
+        borrower: BORROWER,
+        walletAddress: USER,
+        loanToken: LOAN,
+        maxRepayAmount: 5000n,
+        seizedAssets: 1000n,
+      },
+      d,
+    );
+
+    const reads = (
+      d.publicClient.readContract as unknown as {
+        mock: {
+          calls: Array<[{ functionName: string; args?: readonly unknown[] }]>;
+        };
+      }
+    ).mock.calls.map(([c]) => c);
+    const argsFor = (fn: string) =>
+      reads
+        .filter((c) => c.functionName === fn)
+        .map((c) => (c.args ?? []).map((a) => String(a).toLowerCase()));
+
+    expect(argsFor("isLiquidationWhitelist")).toEqual(
+      expect.arrayContaining([
+        [MARKET.toLowerCase(), "0x0000000000000000000000000000000000000000"],
+        [MARKET.toLowerCase(), LIQUIDATOR.toLowerCase()],
+      ]),
+    );
+    expect(argsFor("marketUserWhitelist")).toEqual([
+      [MARKET.toLowerCase(), BORROWER.toLowerCase()],
+    ]);
+  });
+
   it("refuses when Moolah's own list omits the liquidator", async () => {
     await expect(
       buildLiquidateSteps(

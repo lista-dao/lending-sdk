@@ -130,6 +130,11 @@ export async function supplySharesToAssetCeiling(
  * Rounded up, then given headroom: interest accrues between building and
  * inclusion, so the exact figure is stale by the time it is used, and an
  * allowance is a ceiling rather than a payment.
+ *
+ * `headroom: false` stops before that last step, for the callers comparing
+ * this figure against something rather than approving it. Headroom is free on
+ * an allowance and not free on a threshold, where it refuses everything inside
+ * the margin.
  */
 export async function sharesToAssetCeiling(
   shares: bigint,
@@ -138,6 +143,7 @@ export async function sharesToAssetCeiling(
   marketInfo: { params: MarketParams },
   publicClient: PublicClient,
   network: NetworkName,
+  headroom = true,
 ): Promise<bigint> {
   const market = (await publicClient.readContract({
     address: getContractAddress(network, "moolah"),
@@ -173,5 +179,6 @@ export async function sharesToAssetCeiling(
   // Rounded the protocol's way, then given headroom — at least one unit of it,
   // because a 1% margin on a ceiling below 100 raw units floors to nothing and
   // the approval goes stale the moment a single wei of interest accrues.
-  return withHeadroom(toAssetsUp(shares, totalBorrowAssets, totalBorrowShares));
+  const assets = toAssetsUp(shares, totalBorrowAssets, totalBorrowShares);
+  return headroom ? withHeadroom(assets) : assets;
 }

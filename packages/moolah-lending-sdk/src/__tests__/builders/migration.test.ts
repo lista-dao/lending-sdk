@@ -10,6 +10,7 @@ import {
   buildSetAuthorizationSteps,
   buildRevokeAuthorizationSteps,
 } from "../../builders/authorization.js";
+import { marketIdOf } from "../../builders/sharePricing.js";
 
 const USER = "0x0000000000000000000000000000000000000033" as const;
 /** BSC PositionManager, as configured in the address book (EIP-55). */
@@ -32,35 +33,80 @@ const market = (over: Partial<WriteMarketConfig["params"]> = {}) =>
     },
   }) as unknown as WriteMarketConfig;
 
-/**
- * `[totalSupplyAssets, totalSupplyShares, totalBorrowAssets,
- * totalBorrowShares, lastUpdate, fee]`. Borrow assets and shares are 1:1 so a
- * share-denominated migration prices back to its own figure, and supply is far
- * above it so the liquidity check passes unless a test says otherwise.
- */
-const MARKET_STATE = [1_000_000n, 1_000_000n, 1_000n, 1_000n, 1n, 0n] as const;
+/** BSC fixed-term broker address, arbitrary but non-zero. */
+const BROKER = "0x00000000000000000000000000000000000000b1" as const;
 
+/**
+ * Market state as Moolah returns it: `[totalSupplyAssets, totalSupplyShares,
+ * totalBorrowAssets, totalBorrowShares, lastUpdate, fee]`.
+ *
+ * The borrow side carries the virtual offsets `toAssetsUp` adds
+ * (`VIRTUAL_ASSETS = 1`, `VIRTUAL_SHARES = 1_000_000`), so `borrowShares` of
+ * 500_000_000 prices to exactly 500 assets rather than to the 1 that a naive
+ * 1:1 fixture produces. Pricing has to land on a figure big enough to tell the
+ * liquidity comparison apart from a rounding artefact.
+ */
+const SOURCE_STATE = [0n, 0n, 1_000n, 1_000_000_000n, 1n, 0n] as const;
+/** Target: 900 available (1_000 supplied, 100 borrowed) against a need of 500. */
+const TARGET_STATE = [1_000n, 1_000n, 100n, 100n, 1n, 0n] as const;
+/** What `SOURCE_STATE` prices `base.borrowShares` at. */
+const BORROW_SIZE = 500n;
+
+/**
+ * Keyed on the market id in `args[0]`, not just on `functionName` — the whole
+ * point of the pre-flight is that it reads the *target* market's liquidity
+ * while pricing the debt against the *source*, and a mock that answers both
+ * with one tuple cannot tell a correct implementation from one that has them
+ * the wrong way round.
+ */
 const deps = (
   isAuthorized: boolean,
-  marketState: readonly bigint[] = MARKET_STATE,
-) => ({
-  publicClient: {
-    readContract: vi.fn(({ functionName }: { functionName: string }) =>
-      Promise.resolve(functionName === "market" ? marketState : isAuthorized),
-    ),
-  } as unknown as PublicClient,
-  network: "bsc" as const,
-});
+  over: {
+    target?: readonly bigint[];
+    source?: readonly bigint[];
+    broker?: string;
+  } = {},
+) => {
+  const readContract = vi.fn(
+    ({
+      functionName,
+      args,
+    }: {
+      functionName: string;
+      args?: readonly unknown[];
+    }) => {
+      if (functionName === "brokers")
+        return Promise.resolve(over.broker ?? BROKER);
+      if (functionName === "market") {
+        const id = String(args?.[0]).toLowerCase();
+        if (id === IN_ID) return Promise.resolve(over.target ?? TARGET_STATE);
+        if (id === OUT_ID) return Promise.resolve(over.source ?? SOURCE_STATE);
+        throw new Error(`unexpected market id ${id}`);
+      }
+      return Promise.resolve(isAuthorized);
+    },
+  );
+  return {
+    publicClient: { readContract } as unknown as PublicClient,
+    network: "bsc" as const,
+    readContract,
+  };
+};
 
 const base = {
   chainId: CHAIN,
   outMarket: market(),
-  inMarket: market(),
+  // A distinct lltv gives the target its own market id, so reading the wrong
+  // one is detectable rather than silently identical.
+  inMarket: market({ lltv: 900000000000000000n }),
   collateralAmount: 1000n,
-  borrowShares: 500n,
+  borrowShares: 500_000_000n,
   termId: 600n,
   walletAddress: USER,
 };
+
+const OUT_ID = marketIdOf(base.outMarket.params).toLowerCase();
+const IN_ID = marketIdOf(base.inMarket.params).toLowerCase();
 
 describe("authorization steps", () => {
   it("encodes a grant and a revoke against Moolah", () => {
@@ -135,17 +181,63 @@ describe("migration to a fixed-term market", () => {
   // standing authorization they got nothing out of. Refusing before step 0 is
   // built is the only way not to reach that state at all.
   it("refuses before the authorization when the target market is dry", async () => {
+    // Fully lent out: 1,000 supplied, 1,000 borrowed, nothing available.
     const dry = [1_000n, 1_000n, 1_000n, 1_000n, 1n, 0n] as const;
     await expect(
-      buildMigrateToFixedTermSteps(base, deps(false, dry)),
-    ).rejects.toThrow(/loan tokens available and this migration needs/);
+      buildMigrateToFixedTermSteps(base, deps(false, { target: dry })),
+    ).rejects.toThrow(
+      new RegExp(
+        `has 0 loan tokens available and this migration needs ${BORROW_SIZE}`,
+      ),
+    );
+  });
+
+  // The comparison has to be against the TARGET market's liquidity and the
+  // debt has to be priced against the SOURCE. Swapping them, or reading one
+  // tuple for both, passes a fixture where the two markets look alike.
+  it("prices the debt on the source market and the liquidity on the target", async () => {
+    const d = deps(true);
+    await buildMigrateToFixedTermSteps(base, d);
+
+    const marketReads = d.readContract.mock.calls
+      .map(
+        ([call]) => call as { functionName: string; args?: readonly unknown[] },
+      )
+      .filter((call) => call.functionName === "market")
+      .map((call) => String(call.args?.[0]).toLowerCase());
+
+    expect(marketReads).toContain(IN_ID);
+    expect(marketReads).toContain(OUT_ID);
+
+    // Exactly 500 available on the target would be enough; one less is not.
+    const tight = [600n, 600n, 100n, 100n, 1n, 0n] as const;
+    await expect(
+      buildMigrateToFixedTermSteps(base, deps(true, { target: tight })),
+    ).resolves.toBeDefined();
+
+    const short = [599n, 599n, 100n, 100n, 1n, 0n] as const;
+    await expect(
+      buildMigrateToFixedTermSteps(base, deps(true, { target: short })),
+    ).rejects.toThrow(/has 499 loan tokens available/);
   });
 
   it("refuses a target market that was never created", async () => {
     const uncreated = [0n, 0n, 0n, 0n, 0n, 0n] as const;
     await expect(
-      buildMigrateToFixedTermSteps(base, deps(true, uncreated)),
+      buildMigrateToFixedTermSteps(base, deps(true, { target: uncreated })),
     ).rejects.toThrow(/has never been created/);
+  });
+
+  // `PositionManager` borrows the new fixed-term debt through
+  // `MOOLAH.brokers(inMarket.id())` and reverts `no-broker-for-market` on the
+  // zero address — after the grant has landed.
+  it("refuses a target market with no broker registered", async () => {
+    await expect(
+      buildMigrateToFixedTermSteps(
+        base,
+        deps(false, { broker: "0x0000000000000000000000000000000000000000" }),
+      ),
+    ).rejects.toThrow(/has no broker registered/);
   });
 
   it("encodes both market tuples, the amounts and the term", async () => {
@@ -155,7 +247,7 @@ describe("migration to a fixed-term market", () => {
       data: steps[0].params.data,
     });
     expect(functionName).toBe("migrateCommonMarketToFixedTermMarket");
-    expect(args?.slice(2)).toEqual([1000n, 0n, 500n, 600n]);
+    expect(args?.slice(2)).toEqual([1000n, 0n, base.borrowShares, 600n]);
     expect(steps[0].params.to).toBe(PM);
   });
 

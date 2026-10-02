@@ -344,6 +344,33 @@ describe("buildVaultWithdrawSteps", () => {
     ).rejects.toThrow(/exactly one of `assets` or `shares`/);
   });
 
+  // `withdrawAll` reaches the same shape through a different door — it
+  // overwrites `shares` from `userData` after the guard — and that is
+  // deliberate: `withdrawAll` is an explicit instruction that outranks a
+  // leftover `assets`. Pinned so the choice is a decision rather than an
+  // oversight.
+  it("lets withdrawAll override a leftover assets amount", async () => {
+    const userData = {
+      shares: { numerator: 1000n * 10n ** 18n },
+    } as unknown as VaultUserData;
+
+    const steps = await buildVaultWithdrawSteps(
+      {
+        chainId: 56,
+        vaultAddress: VAULT_ADDRESS,
+        withdrawAll: true,
+        assets: 1n,
+        walletAddress: WALLET,
+      } as never,
+      baseVaultInfo,
+      withdrawDeps,
+      userData,
+    );
+
+    expect(steps[0].params.functionName).toBe("redeem");
+    expect(steps[0].params.args[0]).toBe(1000n * 10n ** 18n);
+  });
+
   it("should throw when neither assets nor shares provided", async () => {
     await expect(
       buildVaultWithdrawSteps(

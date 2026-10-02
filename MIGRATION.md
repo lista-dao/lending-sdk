@@ -166,12 +166,17 @@ the headroom costs nothing.
 
 ---
 
-## 11. `buildLiquidateParams` refuses markets the liquidator will not serve
+## 11. `buildLiquidateParams` refuses markets the liquidator cannot serve
 
-The public liquidator keeps an **admin-curated allowlist of markets** and
-reverts `NotWhitelisted()` for the rest. The builder now reads
-`marketWhitelist` first and throws with an explanation; pass
-`allowUnlistedMarket: true` to build the call anyway.
+A public liquidation is gated twice over, and the builder now reads both before
+it builds anything; pass `allowUnlistedMarket: true` to skip the check.
+
+- `PublicLiquidator.isLiquidatable` opens on any one of three — the market's
+  Moolah liquidation list is empty, the market is on the liquidator's own
+  allowlist, or this one borrower is — and reverts `NotWhitelisted()` otherwise.
+- `Moolah.liquidate` separately checks its **caller**, so a market the
+  liquidator will serve still reverts `NOT_LIQUIDATION_WHITELIST` when the
+  market's list is non-empty and omits the liquidator.
 
 **Why:** this is the common case, not the corner case. At the time of writing
 not one distinct market in the "close to liquidation" feed on BSC was enabled —
@@ -180,8 +185,10 @@ re-checked before release. Every one of those would previously have produced a
 well-formed step that reverted after the gas was spent, carrying a bare
 `0x584a7938` — and the ABI had no entry to decode it into a name.
 
-`sdk.isLiquidationMarketEnabled(chainId, marketId)` exposes the same read, so a
-UI can hide the action instead of offering a button that fails.
+`sdk.isLiquidationMarketEnabled(chainId, marketId, borrower)` exposes the same
+answer, so a UI can hide the action instead of offering a button that fails.
+`borrower` is optional and omitting it under-reports: the per-borrower opening
+is one of the three and cannot be seen without it.
 
 ---
 
@@ -543,15 +550,52 @@ propagates so the caller can retry.
   converts principal minus the accrued interest and strands the rest on the
   flexible leg — under the market minimum, which reverts
   `broker/dynamic-below-min-loan`. Pass `dynamicOutstanding` from
-  `getBrokerUserPositions`; both legs are clamped, so headroom above it is
-  safe and absorbs accrual between building and inclusion.
+  `getBrokerUserPositions` — note it carries a 10% interest buffer on top of
+  the contract's debt figure, because it is sized as a repayment estimate.
+  Both legs are clamped by `min`, so that overshoot converts the debt exactly
+  and absorbs accrual between building and inclusion.
 - **`buildBrokerRefinanceMaturedParams` does not open a fresh fixed term.** The
   docstring said it rolled a matured position into a new one. The balance
   returns to the **flexible leg**: after refinancing, the
   matured term is gone, no new fixed term exists, and the debt is on the dynamic
   position. Read the position back rather than looking for a new term id. What
   the call guarantees is that the matured leg is settled and the debt is not
-  lost.
+  lost. It is also **operator-only**: the broker declares
+  `refinanceMaturedFixedPositions(...) onlyRole(BOT)`, so the scheduled job
+  that holds the role runs it and any other wallet reverts. Do not surface it
+  as a user action.
+- **`calculateFixedLoanRepayment` now matches `BrokerMath`, and its figures
+  move.** Three divergences, all over-reporting, plus one under: interest
+  accrued from `start` rather than `lastRepaidTime` (re-charging windows a
+  partial repayment had already settled), it never stopped at `end` (so a
+  matured position accrued without bound), it ignored `interestRepaid`, and
+  the early-repayment penalty inverted the contract's formula instead of
+  transcribing it — 1.33x the real figure at 30% APR on a fresh one-year term.
+  Every division now ceils the way the contract's `Math.mulDiv` does: flooring
+  quoted a matured 1000-token position 32 wei short, which leaves dust on the
+  principal and reverts `broker/fixed-below-min-loan`. Expect smaller interest
+  on partially repaid and matured positions, and a smaller penalty on every
+  early repayment.
+- **`isLiquidationMarketEnabled` takes an optional `borrower` and answers
+  differently in both directions.** See section 11. It previously read only
+  `PublicLiquidator.marketWhitelist`, which refused permissionless markets and
+  per-borrower openings, and allowed markets whose Moolah liquidation list
+  omits the liquidator.
+- **`buildVaultWithdrawParams` refuses `assets` and `shares` together.** It
+  used to take the `shares` branch and drop `assets` silently — a redeem of a
+  different size, reported as the withdrawal that was asked for. The union
+  makes it a compile error; this is the runtime guard for JavaScript callers,
+  matching `resolveAssetsOrShares` on the market builders. `withdrawAll` is
+  unaffected.
+- **`buildMigrateToFixedTermParams` pre-flights the target market.** It refuses
+  a market that was never created, one with no broker registered
+  (`PositionManager` reverts `no-broker-for-market`), and one without the
+  liquidity to fund the borrow. All three used to revert *after* the standing
+  `setAuthorization` had landed, leaving a grant the caller got no use from.
+  Not every precondition is covered — an unserved `termId`, a borrower off the
+  market whitelist, a remainder under `minLoan` and an over-sized
+  `collateralAmount` still fail that way, and `reversalSteps` on the grant is
+  what covers them.
 - **Share conversions use the protocol's virtual assets and shares.** Morpho-Blue
   seeds every conversion with one virtual asset and a million virtual shares.
   Omitting them **under-approves a thin market** — with totals `(1, 2_000_000)`
