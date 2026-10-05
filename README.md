@@ -150,7 +150,9 @@ for a vault. All three are exported from the package root and from
   lands later. If the gap is long enough to matter, rebuild rather than send.
 
 ```typescript
-const send = (params) =>
+import type { ContractCallParams } from "@lista-dao/moolah-lending-sdk";
+
+const send = (params: ContractCallParams) =>
   walletClient.sendTransaction({
     to: params.to,
     data: params.data,
@@ -320,7 +322,8 @@ cannot be seen and the answer under-reports.
 
 ```typescript
 const targets = await sdk.getCloseToLiquidate({ page: 1, pageSize: 20 });
-if (!(await sdk.isLiquidationMarketEnabled(56, marketId, borrower))) return;
+const enabled = await sdk.isLiquidationMarketEnabled(56, marketId, borrower);
+if (!enabled) throw new Error("liquidation is disabled for this market");
 const cost = await sdk.quoteLiquidationCost({
   chainId: 56,
   marketId,
@@ -546,11 +549,10 @@ a.isNegative(); // false
 const amount = Decimal.parse("100.5", 18);
 
 // Method 1: Use roundDown to get raw value
-const rawValue = amount.roundDown(18).numerator; // 100500000000000000000n
+const rawFromDecimal = amount.roundDown(18).numerator; // 100500000000000000000n
 
 // Method 2: For user input, use viem's parseUnits directly
-import { parseUnits } from "viem";
-const rawValue = parseUnits("100.5", 18); // 100500000000000000000n
+const rawFromInput = parseUnits("100.5", 18); // 100500000000000000000n
 ```
 
 ### Complete Example

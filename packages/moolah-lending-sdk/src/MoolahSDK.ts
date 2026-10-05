@@ -406,7 +406,7 @@ export class MoolahSDK {
 
   // ===== Read Methods (Chain) =====
 
-  getApiChain(chainId: ChainId): string {
+  getApiChain(chainId: ChainId): ApiChain {
     const network = this.getNetwork(chainId);
     return getApiChain(network);
   }
