@@ -379,8 +379,7 @@ export async function buildVaultMintSteps(
     // Ceiling division: flooring makes the buffer vanish whenever
     // `quoted * bufferBps < 10_000`, handing a small mint an exact allowance
     // and reinstating the reprice failure the buffer exists to absorb.
-    assetCeiling =
-      quoted + (quoted * bufferBps + 9_999n) / 10_000n;
+    assetCeiling = quoted + (quoted * bufferBps + 9_999n) / 10_000n;
   }
 
   const approveSteps = await buildApproveSteps(

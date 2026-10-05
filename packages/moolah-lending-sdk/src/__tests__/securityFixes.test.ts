@@ -381,12 +381,13 @@ describe("a vault's provider decides how it is entered, and how it is left", () 
       base,
       {
         publicClient: {
-          readContract: vi.fn(async ({ functionName }: { functionName: string }) =>
-            functionName === "previewMint"
-              ? 50n
-              : functionName === "provider"
-                ? ZERO
-                : 0n,
+          readContract: vi.fn(
+            async ({ functionName }: { functionName: string }) =>
+              functionName === "previewMint"
+                ? 50n
+                : functionName === "provider"
+                  ? ZERO
+                  : 0n,
           ),
         } as unknown as PublicClient,
         network: "bsc",
