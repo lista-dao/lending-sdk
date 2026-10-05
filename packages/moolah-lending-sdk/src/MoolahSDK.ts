@@ -1242,7 +1242,10 @@ export class MoolahSDK {
   /**
    * Liquidate an unhealthy position through the public liquidator.
    * Supply exactly one of `seizedAssets` or `repaidShares`.
-   * Refuses markets that are not on the liquidator's allowlist.
+   *
+   * Refuses a position the liquidator cannot serve, which takes reading two
+   * contracts — see {@link isLiquidationMarketEnabled}. Pass
+   * `allowUnlistedMarket` to build the call regardless.
    */
   async buildLiquidateParams(
     params: BuildLiquidateParams,
