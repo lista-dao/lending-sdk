@@ -302,6 +302,8 @@ export interface ApiMarketGroup {
   marketCount?: number;
   chain?: string;
   markets?: ApiGroupedMarketItem[];
+  /** Lending zones the backend tags this group with; read with `hasZone`. */
+  zones?: number[];
   [key: string]: unknown;
 }
 

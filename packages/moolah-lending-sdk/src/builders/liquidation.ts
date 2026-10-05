@@ -195,6 +195,24 @@ export async function buildLiquidateSteps(
     }
   }
 
+  // The liquidator derives the loan token from the market itself, so a caller
+  // working from stale metadata would get its approval mined and the liquidate
+  // call reverted straight after — leaving a standing allowance on a token
+  // this flow never spends. Check before anything lands.
+  const [marketLoanToken] = (await deps.publicClient.readContract({
+    address: getContractAddress(deps.network, "moolah"),
+    abi: MOOLAH_ABI,
+    functionName: "idToMarketParams",
+    args: [params.marketId],
+  })) as readonly [Address, Address, Address, Address, bigint];
+  if (marketLoanToken.toLowerCase() !== params.loanToken.toLowerCase()) {
+    throw new Error(
+      `buildLiquidateSteps: loanToken ${params.loanToken} is not the loan ` +
+        `token of market ${params.marketId} (${marketLoanToken}), so the ` +
+        `liquidate call would revert after the approval had already landed.`,
+    );
+  }
+
   const liquidator = getContractAddress(
     deps.network,
     "moolahPublicLiquidation",

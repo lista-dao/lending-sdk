@@ -36,6 +36,7 @@ const deps = (
     borrowerListed?: boolean;
     liquidatorAllowed?: boolean;
   } = {},
+  marketLoanToken: string = "0x0000000000000000000000000000000000000001",
 ) => ({
   publicClient: {
     readContract: vi.fn(
@@ -46,6 +47,16 @@ const deps = (
         functionName: string;
         args?: readonly unknown[];
       }) => {
+        // The builder now checks the caller's loanToken against the market's
+        // own before approving anything; by default agree with it.
+        if (functionName === "idToMarketParams")
+          return [
+            marketLoanToken,
+            "0x0000000000000000000000000000000000000002",
+            "0x0000000000000000000000000000000000000003",
+            "0x0000000000000000000000000000000000000004",
+            0n,
+          ];
         if (functionName === "marketWhitelist") return whitelisted;
         if (functionName === "marketUserWhitelist")
           return gates.borrowerListed ?? false;
@@ -68,6 +79,23 @@ const decode = (data: `0x${string}`) =>
   decodeFunctionData({ abi: PUBLIC_LIQUIDATOR_ABI, data });
 
 describe("public liquidation", () => {
+  it("rejects a loanToken that is not the market's own", async () => {
+    await expect(
+      buildLiquidateSteps(
+        {
+          chainId: CHAIN,
+          marketId: MARKET,
+          borrower: BORROWER,
+          walletAddress: USER,
+          loanToken: LOAN,
+          maxRepayAmount: 100n,
+          seizedAssets: 5n,
+        },
+        deps(0n, true, {}, "0x00000000000000000000000000000000000000ff"),
+      ),
+    ).rejects.toThrow(/is not the loan token of market/);
+  });
+
   it("approves the liquidator, then liquidates in seized-assets mode", async () => {
     const steps = await buildLiquidateSteps(
       {
