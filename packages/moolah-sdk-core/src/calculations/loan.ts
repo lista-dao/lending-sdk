@@ -103,6 +103,19 @@ export function calculateDynamicLoanRepayment(
  * Twenty minutes matches the margin the reference frontend pre-charges on the
  * flexible leg. It is deliberately a *time* margin rather than a percentage,
  * because what goes stale here is elapsed time.
+ *
+ * It buys twice its own length. While a quote is held, interest accrues at
+ * `principal x ratePerSecond` while the quoted penalty — fixed at quote time —
+ * runs ahead of the shrinking real one by half that, so the net shortfall
+ * grows at half the rate the margin pays for: twenty minutes of pre-charged
+ * interest carries a quote for about forty.
+ *
+ * Past that the failure is graded, and the second half of it is the unpleasant
+ * one. A small shortfall strands dust on the principal and reverts
+ * `broker/fixed-below-min-loan`, which is loud. A shortfall larger than
+ * `minLoan` does not revert at all — it settles as a partial repayment and
+ * leaves the position open, still accruing, with no error for the caller to
+ * catch. Rebuild a quote that has sat rather than sending it.
  */
 export const REPAY_BUFFER_SECONDS = 20n * 60n;
 

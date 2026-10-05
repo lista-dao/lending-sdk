@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { calculateFixedLoanRepayment } from "../calculations/loan.js";
+import {
+  calculateFixedLoanRepayment,
+  REPAY_BUFFER_SECONDS,
+} from "../calculations/loan.js";
 import type { FixedLoanPosition } from "../types/loan.js";
 
 /**
@@ -199,6 +202,43 @@ describe("calculateFixedLoanRepayment matches BrokerMath", () => {
         .numerator;
       const settled = previewRepay(big, toSend, quotedAt + delay);
       expect(settled.remainingAfter).toBe(0n);
+    });
+
+    // The three delays above all clear with a margin a quarter this size, so
+    // on their own they do not pin the constant — someone could halve
+    // `REPAY_BUFFER_SECONDS` and watch the suite stay green. What ties the
+    // tests to the value is the exchange rate between margin and delay.
+    //
+    // It is exactly two. While a quote is held, interest accrues at
+    // `principal x ratePerSecond` and the quoted penalty — fixed at quote
+    // time — runs ahead of the shrinking real one by half that, since
+    // `getPenaltyForFixedPosition` is `repayAmt x ratePerSecond x timeLeft / 2`.
+    // So the net shortfall grows at half the rate the margin pays for, and N
+    // seconds of pre-charged interest carry a quote for 2N seconds of delay.
+    const boundary = (bufferSeconds: bigint) => {
+      const quotedAt = START + 10n * 86400n;
+      const toSend = calculateFixedLoanRepayment(
+        big,
+        quotedAt,
+        18,
+        bufferSeconds,
+      ).totalRepay.numerator;
+      let delay = 0n;
+      while (
+        previewRepay(big, toSend, quotedAt + delay).remainingAfter === 0n
+      ) {
+        delay += 10n;
+      }
+      return delay - 10n;
+    };
+
+    it("carries a quote for twice REPAY_BUFFER_SECONDS, and not past it", () => {
+      expect(boundary(REPAY_BUFFER_SECONDS)).toBe(2n * REPAY_BUFFER_SECONDS);
+    });
+
+    it("halving the margin halves the window it buys", () => {
+      expect(boundary(REPAY_BUFFER_SECONDS / 2n)).toBe(REPAY_BUFFER_SECONDS);
+      expect(boundary(0n)).toBe(0n);
     });
 
     it("without the margin, the same quote strands dust under minLoan", () => {

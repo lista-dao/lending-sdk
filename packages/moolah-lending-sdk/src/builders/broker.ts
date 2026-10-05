@@ -396,8 +396,13 @@ export async function buildBrokerRefinanceMaturedSteps(
  * full principal and leaves the position under the market minimum, which reverts
  * with `remain borrow too low`. The broker transfers only what is actually owed
  * — verified on chain: a 40.0 amount against a 20.000000061 position moved
- * 20.000002877 — so headroom is free. `previewRepayFixedLoanPosition` gives the
- * size; double it to send.
+ * 20.000002877 — so headroom is free.
+ *
+ * `calculateFixedLoanRepayment().totalRepay` is the sized figure: it already
+ * carries `REPAY_BUFFER_SECONDS` of forward interest, which covers roughly
+ * forty minutes of staleness, and is what to pass here. Doubling
+ * `previewRepayFixedLoanPosition`'s exact figure also works and is what this
+ * builder's own harness does; it is simply a blunter version of the same idea.
  */
 export async function buildBrokerRepaySteps(
   params: {
