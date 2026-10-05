@@ -323,21 +323,22 @@ cannot be seen and the answer under-reports.
 ```typescript
 const targets = await sdk.getCloseToLiquidate({ page: 1, pageSize: 20 });
 const enabled = await sdk.isLiquidationMarketEnabled(56, marketId, borrower);
-if (!enabled) throw new Error("liquidation is disabled for this market");
-const cost = await sdk.quoteLiquidationCost({
-  chainId: 56,
-  marketId,
-  seizedAssets,
-});
-const steps = await sdk.buildLiquidateParams({
-  chainId: 56,
-  marketId,
-  borrower,
-  walletAddress,
-  loanToken,
-  maxRepayAmount: (cost * 105n) / 100n, // headroom: the oracle moves
-  seizedAssets,
-});
+if (enabled) {
+  const cost = await sdk.quoteLiquidationCost({
+    chainId: 56,
+    marketId,
+    seizedAssets,
+  });
+  const steps = await sdk.buildLiquidateParams({
+    chainId: 56,
+    marketId,
+    borrower,
+    walletAddress,
+    loanToken,
+    maxRepayAmount: (cost * 105n) / 100n, // headroom: the oracle moves
+    seizedAssets,
+  });
+}
 ```
 
 `getLiquidationList` returns positions already past the threshold — empty
@@ -545,11 +546,14 @@ a.isNegative(); // false
 ### Converting to bigint for Transactions
 
 ```typescript
+import { Decimal } from "@lista-dao/moolah-lending-sdk";
+import { parseUnits } from "viem";
+
 // When sending transactions, convert to raw bigint
 const amount = Decimal.parse("100.5", 18);
 
 // Method 1: Use roundDown to get raw value
-const rawFromDecimal = amount.roundDown(18).numerator; // 100500000000000000000n
+const rawValue = amount.roundDown(18).numerator; // 100500000000000000000n
 
 // Method 2: For user input, use viem's parseUnits directly
 const rawFromInput = parseUnits("100.5", 18); // 100500000000000000000n
