@@ -85,6 +85,8 @@ export type {
   BrokerUserPositionsData,
 } from "@lista-dao/moolah-sdk-core";
 
+export type { ApiChain } from "@lista-dao/moolah-sdk-core";
+
 export {
   Decimal,
   getContractAddress,
