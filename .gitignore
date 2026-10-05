@@ -12,3 +12,4 @@ tsconfig.tsbuildinfo
 .omx/
 parity-report.json
 *.tsbuildinfo
+.omc/
