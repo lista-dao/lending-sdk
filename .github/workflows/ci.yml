@@ -33,6 +33,10 @@ jobs:
       - run: pnpm test
       - run: pnpm lint
       - run: pnpm format:check
+      # Compiles every TypeScript block in the READMEs and MIGRATION.md
+      # against the built types. Three bugs have been filed for examples that
+      # did not compile; each was found by a person reading the file.
+      - run: pnpm check:docs
       # Inspects the packed manifests, which is the only place the viem peer
       # dependency and the exports map can be checked as published.
       - run: pnpm check:packaging

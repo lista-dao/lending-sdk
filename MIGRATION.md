@@ -76,7 +76,7 @@ sequence.
 `BuildRepayParams`, `BuildVaultWithdrawParams` and `BuildSmartRepayParams` now
 require exactly one:
 
-```ts
+```ts no-check
 // before — compiled, then reverted on-chain
 sdk.buildRepayParams({ ..., assets: 100n, shares: 5n });
 
@@ -100,7 +100,7 @@ present. The consumed surface is `MathLib` and `AdaptiveCurveIrmLib`.
 
 **Who is affected:** anyone importing it. It had no internal usages.
 
-```ts
+```ts no-check
 // before
 import { NetworkNames } from "@lista-dao/moolah-sdk-core";
 const n = NetworkNames.bsc;

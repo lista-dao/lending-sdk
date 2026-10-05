@@ -13,3 +13,4 @@ tsconfig.tsbuildinfo
 parity-report.json
 *.tsbuildinfo
 .omc/
+.docs-typecheck/
