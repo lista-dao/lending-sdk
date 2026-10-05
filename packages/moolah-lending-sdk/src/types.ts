@@ -589,7 +589,14 @@ export interface BuildBrokerRepayAllParams {
   marketId?: `0x${string}`;
 }
 
-/** Roll matured fixed-term positions into fresh terms. */
+/**
+ * Settle matured fixed-term positions back onto the flexible leg.
+ *
+ * No new term is opened — read the position back rather than looking for a
+ * fresh term id. **Operator-only:** the broker declares
+ * `refinanceMaturedFixedPositions(...) onlyRole(BOT)`, so the scheduled job
+ * holding that role is the caller; any other wallet reverts.
+ */
 export interface BuildBrokerRefinanceMaturedParams {
   chainId: ChainId;
   brokerAddress: Address;
@@ -604,6 +611,14 @@ export interface BuildBrokerRefinanceMaturedParams {
 export interface BuildConvertDynamicToFixedParams {
   chainId: ChainId;
   brokerAddress: Address;
+  /**
+   * A **debt** figure, not a principal one. The contract spends it interest
+   * first, so converting the whole leg takes `dynamicOutstanding` from
+   * `getBrokerUserPositions` — a principal-sized amount strands roughly the
+   * accrued interest on the flexible leg and reverts
+   * `broker/dynamic-below-min-loan`. Overshooting is clamped, so headroom is
+   * safe.
+   */
   amount: bigint;
   termId: bigint;
   /** The market this broker should serve. Supply it and the pair is checked. */
