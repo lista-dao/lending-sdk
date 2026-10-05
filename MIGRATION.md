@@ -591,8 +591,19 @@ propagates so the caller can retry.
   where `_validateFixedPosition` rejects anything under `minLoan`. The fixed
   path never had one; the inverted penalty was accidentally standing in for it,
   so correcting the maths without adding the margin would have made a stale
-  quote *more* likely to revert, not less. Pass `bufferSeconds: 0n` for the
-  exact figure.
+  quote *more* likely to revert, not less.
+
+  The margin buys twice its own length in staleness: the quoted penalty runs
+  ahead of the shrinking real one at half the rate interest accrues, so 20
+  minutes of pre-charged interest carries a quote for about 40. Past that the
+  repayment lands short — first reverting `broker/fixed-below-min-loan`, and
+  then, once the shortfall clears `minLoan`, settling as a **partial repay
+  that leaves the position open** with no error. Rebuild rather than send a
+  quote that has sat for an hour.
+
+  The parameter is positional, so reaching it means naming the two before it:
+  `calculateFixedLoanRepayment(position, currentTime, 18, 0n)` for the exact
+  figure.
 - **`isLiquidationMarketEnabled` takes an optional `borrower` and answers
   differently in both directions.** See section 11. It previously read only
   `PublicLiquidator.marketWhitelist`, which refused permissionless markets and
