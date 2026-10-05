@@ -373,6 +373,28 @@ describe("a vault's provider decides how it is entered, and how it is left", () 
     ).rejects.toThrow(/has not established that the provider implements mint/);
   });
 
+  it("keeps a buffer on a quote too small for 1bp of rounding", async () => {
+    // quoted * 100 < 10_000, so flooring the buffer yields exactly `quoted`
+    // and the allowance has no room for a one-unit reprice.
+    const steps = await buildVaultMintSteps(
+      { chainId: 56, vaultAddress: VAULT, shares: 1n, walletAddress: USER },
+      base,
+      {
+        publicClient: {
+          readContract: vi.fn(async ({ functionName }: { functionName: string }) =>
+            functionName === "previewMint"
+              ? 50n
+              : functionName === "provider"
+                ? ZERO
+                : 0n,
+          ),
+        } as unknown as PublicClient,
+        network: "bsc",
+      },
+    );
+    expect(steps[0].meta?.amount).toBeGreaterThan(50n);
+  });
+
   it("routes through the provider when the caller has verified it", async () => {
     const steps = await buildVaultMintSteps(
       {
