@@ -91,19 +91,21 @@ import {
 // Get annual borrow rate from per-second rate
 const annualRate = getAnnualBorrowRate(ratePerSecond);
 
-// Get comprehensive rate info
+// Get comprehensive rate info. The IRM is adaptive, so it takes the market's
+// current utilization and the stored `rateAtTarget`, not the raw totals.
 const rateInfo = getBorrowRateInfo({
-  totalBorrowAssets,
-  totalSupplyAssets,
-  irm: { curve1, curve2 },
+  utilization,
+  rateAtTarget,
+  lastUpdate,
 });
 
-// Generate rate curve for charts
+// Generate rate curve for charts. `points` sets the resolution; the curve is
+// derived from `rateAtTarget` and the market fee, not from the raw totals.
 const curve = getInterestRates({
-  totalBorrowAssets,
-  totalSupplyAssets,
-  irm: { curve1, curve2 },
-  steps: 100,
+  rateAtTarget,
+  lastUpdate,
+  fee,
+  points: 100,
 });
 ```
 
@@ -144,12 +146,10 @@ import {
   normalizeAprRate,
 } from "@lista-dao/moolah-sdk-core";
 
-// Calculate fixed-term loan repayment
-const repayment = calculateFixedLoanRepayment({
-  principal,
-  apr,
-  durationDays,
-});
+// Calculate fixed-term loan repayment. It takes the position as the broker
+// stores it — `lastRepaidTime` and `interestRepaid` are what the contract
+// measures interest from, so a partial object quotes the wrong figure.
+const repayment = calculateFixedLoanRepayment(position);
 ```
 
 ### Types
@@ -169,7 +169,7 @@ import type {
 
   // Vaults
   VaultInfo,
-  VaultMetadata,
+  VaultUserData,
 
   // Smart Markets
   SmartMarketExtraInfo,
@@ -209,7 +209,7 @@ const moolahAddress = getContractAddress("bsc", "moolah");
 ```typescript
 import {
   getApiChain,
-  getListaApiUrl,
+  getApiUrlForNetwork,
   getNativeCurrencySymbol,
   isUsdtLikeToken,
 } from "@lista-dao/moolah-sdk-core";
@@ -218,7 +218,7 @@ import {
 const apiChain = getApiChain("bsc"); // "bsc"
 
 // Get API URL
-const url = getListaApiUrl("prod"); // "https://api.lista.org"
+const url = getApiUrlForNetwork("bsc"); // "https://api.lista.org"
 ```
 
 ## Package Architecture
@@ -252,7 +252,7 @@ moolah-sdk-core/
 └── utils/
     ├── decimal.ts      # Decimal class
     ├── fraction.ts    # Fraction class
-    ├── apiChain.ts     # getApiChain, getListaApiUrl
+    ├── apiChain.ts     # getApiChain, getApiUrlForNetwork
     └── network.ts      # getNativeCurrencySymbol
 ```
 
