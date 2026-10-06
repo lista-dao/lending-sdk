@@ -32,6 +32,10 @@ jobs:
       - run: pnpm test
       - run: pnpm lint
       - run: pnpm format:check
+      # The published READMEs are the first thing an integrator runs. Three
+      # bugs have been filed for examples that did not compile, so this gates
+      # the publish as well as the PR.
+      - run: pnpm check:docs
       - run: pnpm check:packaging
       - name: The published packages install, compile and load for a consumer
         run: pnpm check:consumer
