@@ -42,6 +42,7 @@ const KEEP = process.argv.includes("--keep");
 const DOCS = [
   "README.md",
   "MIGRATION.md",
+  "RELEASING.md",
   "packages/moolah-lending-sdk/README.md",
   "packages/moolah-sdk-core/README.md",
 ];

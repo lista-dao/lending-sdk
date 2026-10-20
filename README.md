@@ -752,6 +752,13 @@ pnpm lint         # Lint code
 pnpm check:types  # Type check
 ```
 
+## Releasing
+
+Both packages are versioned with Changesets and published together by the
+`Release` workflow on every push to `main`. See [RELEASING.md](./RELEASING.md)
+for the full procedure, including the version bump that must be applied on the
+branch rather than in CI.
+
 ## License
 
 MIT
