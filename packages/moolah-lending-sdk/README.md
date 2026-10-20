@@ -123,7 +123,7 @@ const userDataWithBroker = await sdk.getMarketUserDataWithBroker(
 );
 // Or manually: pass fixedTermData into getMarketUserData
 const fixedTermData = brokerPositionsToUserFixedTermData(brokerPositions);
-const userData = await sdk.getMarketUserData(
+const userDataWithFixedTerm = await sdk.getMarketUserData(
   chainId,
   marketId,
   userAddress,

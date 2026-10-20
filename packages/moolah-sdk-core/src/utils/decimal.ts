@@ -5,6 +5,7 @@ import {
   DivisionByZeroError,
   Fraction,
   getTenPower,
+  parseNumber,
   RoundingMode,
 } from "./fraction.js";
 
@@ -34,7 +35,7 @@ export class Decimal extends Fraction {
     if (typeof value === "string") {
       numerator = parseUnits(value, decimal);
     } else if (typeof value === "number") {
-      numerator = parseUnits(value.toFixed(decimal), decimal);
+      numerator = parseNumber(value, decimal);
     } else if (typeof value === "bigint") {
       numerator = value * denominator;
     } else {
@@ -66,10 +67,7 @@ export class Decimal extends Fraction {
           return new Decimal(BigInt(Math.round(arg1)), 0);
         }
         return new Decimal(
-          parseUnits(
-            arg1.toFixed(Fraction.DEFAULT_DECIMALS),
-            Fraction.DEFAULT_DECIMALS,
-          ),
+          parseNumber(arg1, Fraction.DEFAULT_DECIMALS),
           Fraction.DEFAULT_DECIMALS,
         );
       }

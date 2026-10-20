@@ -235,6 +235,11 @@ export function getInterestRates(params: {
   } = params;
 
   const rates: InterestRatePoint[] = [];
+  // points < 2 gives a zero or negative step: the first throws on the
+  // divisor, the second makes the loop below never terminate.
+  if (!Number.isInteger(points) || points < 2) {
+    throw new Error(`points must be an integer of at least 2, got ${points}`);
+  }
   const step = WEI_VALUE / BigInt(points - 1);
 
   for (let i = 0n; i <= WEI_VALUE; i += step) {
@@ -276,6 +281,11 @@ export function getFixedRateInterestRates(params: {
   const { borrowRate, fee, points = 101 } = params;
 
   const rates: InterestRatePoint[] = [];
+  // points < 2 gives a zero or negative step: the first throws on the
+  // divisor, the second makes the loop below never terminate.
+  if (!Number.isInteger(points) || points < 2) {
+    throw new Error(`points must be an integer of at least 2, got ${points}`);
+  }
   const step = WEI_VALUE / BigInt(points - 1);
 
   for (let i = 0n; i <= WEI_VALUE; i += step) {

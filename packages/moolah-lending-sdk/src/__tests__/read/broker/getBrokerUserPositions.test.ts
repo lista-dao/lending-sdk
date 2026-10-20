@@ -10,8 +10,7 @@ const mockPublicClient = {
 } as unknown as PublicClient;
 
 const BROKER = "0x1111111111111111111111111111111111111111" as Address;
-const RATE_CALCULATOR =
-  "0x2222222222222222222222222222222222222222" as Address;
+const RATE_CALCULATOR = "0x2222222222222222222222222222222222222222" as Address;
 const USER = "0x3333333333333333333333333333333333333333" as Address;
 
 describe("getBrokerUserPositions - dynamic debt", () => {

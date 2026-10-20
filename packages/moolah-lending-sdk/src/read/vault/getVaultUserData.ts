@@ -6,6 +6,7 @@ import {
   getVaultBalance,
   isVaultWhiteList,
 } from "@lista-dao/moolah-sdk-core";
+import { isContractLevelFailure } from "../../rpcErrors.js";
 
 /**
  * Get user's vault data
@@ -18,7 +19,19 @@ export async function getVaultUserData(
 ): Promise<VaultUserData> {
   const [_shares, isWhiteList] = await Promise.all([
     getVaultBalance(publicClient, vaultAddress, userAddress),
-    isVaultWhiteList(publicClient, vaultAddress, userAddress).catch(() => true),
+    // A revert (the vault has no allowlist function at all) genuinely means
+    // "not gated" — `true`. A timeout or a rate-limited node says nothing
+    // about the vault, and reporting it as `true` anyway was the same defect
+    // as the Smart-market catch elsewhere in this release: an RPC failure
+    // read as a confident, wrong, and here specifically the *permissive*
+    // answer — a UI could let a deposit through for an account that was
+    // never actually whitelisted.
+    isVaultWhiteList(publicClient, vaultAddress, userAddress).catch(
+      (error: unknown) => {
+        if (!isContractLevelFailure(error)) throw error;
+        return true;
+      },
+    ),
   ]);
 
   const { assetInfo } = vaultInfo;
