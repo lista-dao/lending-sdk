@@ -88,6 +88,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+      # `changesets/action` sees that GitHub can mint an OIDC token and elects
+      # to publish through npm trusted publishing. It then hands the work to
+      # `npm publish`, and OIDC publishing needs npm 11.5.1 or newer — the npm
+      # that ships with Node 20 is 10.x, which has no such support. The result
+      # is a publish with no credential at all: the registry asks for a
+      # one-time password and the job dies with EOTP, as the 2.0.0 release did
+      # twice. Upgrading npm is what makes the trusted publisher usable.
+      - run: npm install -g npm@latest
+
       - name: Version Packages PR, or publish once one has been merged
         uses: changesets/action@v1
         with:
@@ -97,4 +106,13 @@ jobs:
           title: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Both, and they are not interchangeable. `setup-node` writes an
+          # .npmrc that reads `NODE_AUTH_TOKEN`, which is what `npm publish`
+          # itself uses. `changesets/action` makes its own decision earlier:
+          # it looks for `NPM_TOKEN`, and finding none it logs "No NPM_TOKEN
+          # found, but OIDC is available" and switches to npm trusted
+          # publishing. That path needs a trusted publisher configured on the
+          # npm side; without one the registry falls back to asking for a
+          # one-time password and the publish dies with EOTP.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
