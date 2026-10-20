@@ -180,3 +180,31 @@ token. Replace it with a Granular Access Token or a classic Automation token.
 `changeset publish` handles each package independently. Re-running the
 workflow publishes the remaining one; the already-published package is
 skipped.
+
+**The publish step fails with `TLOG_CREATE_ENTRY_ERROR` and a 409.**
+
+```
+npm error code TLOG_CREATE_ENTRY_ERROR
+npm error error creating tlog entry - (409) an equivalent entry already
+exists in the transparency log
+```
+
+Publishing with provenance signs a statement and records it in Sigstore's
+public transparency log. The statement covers the source commit and the
+workflow run, and the log rejects a byte-identical entry. An earlier attempt
+that failed *after* signing has therefore already claimed that entry, and
+every retry from the same commit reproduces it.
+
+Retrying the same run cannot clear this. Land any new commit on `main`
+instead: the provenance then references a different commit, which is a
+different statement and a new log entry. `changeset publish` skips whatever
+already reached npm, so only the outstanding package is published.
+
+**The registry still reports the old version right after a successful run.**
+npm's registry is eventually consistent, and `npm view` caches on top of that.
+Query the registry directly before concluding a publish did not land:
+
+```bash
+curl -s https://registry.npmjs.org/@lista-dao%2Fmoolah-sdk-core \
+  | python3 -c "import json,sys; print(json.load(sys.stdin)['dist-tags'])"
+```
