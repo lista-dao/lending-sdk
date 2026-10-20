@@ -95,7 +95,13 @@ jobs:
       # is a publish with no credential at all: the registry asks for a
       # one-time password and the job dies with EOTP, as the 2.0.0 release did
       # twice. Upgrading npm is what makes the trusted publisher usable.
-      - run: npm install -g npm@latest
+      #
+      # Pinned to the 11 line rather than `latest`: npm 12 requires Node
+      # ^22.22.2 || ^24.15.0 || >=26, so `npm@latest` cannot install on the
+      # Node 20 this job runs. npm 11 declares `^20.17.0 || >=22.9.0` and its
+      # current release is well past the 11.5.1 that introduced OIDC.
+      - run: npm install -g npm@11
+      - run: npm --version
 
       - name: Version Packages PR, or publish once one has been merged
         uses: changesets/action@v1
