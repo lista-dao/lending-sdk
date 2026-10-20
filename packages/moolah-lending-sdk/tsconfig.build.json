@@ -1,0 +1,7 @@
+{
+  // Emit config. `tsconfig.json` still includes `src/__tests__` so `check:types`
+  // covers them; this one leaves them out of `dist`, because they were shipping
+  // in the published tarball — half its files — and nothing needs them there.
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/__tests__"]
+}

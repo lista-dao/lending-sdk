@@ -5,24 +5,15 @@ import {
   BROKER_RATE_CALCULATOR_ABI,
   calculateDynamicLoanRepayment,
   calculateFixedLoanRepayment,
+  normalizeAprRate,
   type BrokerUserPositionsData,
   type FixedLoanPosition,
   type DynamicLoanPosition,
   type RawFixedTerm,
 } from "@lista-dao/moolah-sdk-core";
-
-const ONE_E27 = 10n ** 27n;
 const SECONDS_PER_WEEK = 604800n;
 const FLEXIBLE_RATE_NUMERATOR = 100n;
 const FLEXIBLE_RATE_DENOMINATOR = 95n;
-
-/**
- * Normalize APR rate from contract format
- * Contract stores APR as (1 + rate) * 1e27, we convert to rate * 1e27
- */
-function normalizeAprRate(apr: bigint): bigint {
-  return apr > ONE_E27 ? apr - ONE_E27 : apr;
-}
 
 function buildTermRateData(terms: readonly RawFixedTerm[]) {
   const termRateByDuration = new Map<string, Decimal>();
@@ -131,21 +122,29 @@ export async function getBrokerUserPositions(
   }
 
   // Process fixed positions
-  const currentTimestamp = Math.floor(Date.now() / 1000);
+  const currentTimestamp = BigInt(Math.floor(Date.now() / 1000));
   for (const position of fixedPositions) {
-    // Skip fully repaid or matured positions
+    // Only a fully repaid position owes nothing.
     if (position.principal <= position.principalRepaid) {
       continue;
     }
-    if (Number(position.end) <= currentTimestamp) {
-      continue;
-    }
+
+    // A matured position still owes principal plus the interest accrued up to
+    // maturity — it does not vanish, which is why the SDK also ships a
+    // refinance builder for exactly this state. Excluding it understated
+    // `borrowed`, the figure an integrator sizes a repayment from. Interest is
+    // capped at maturity rather than allowed to keep accruing past `end`.
+    const matured = position.end <= currentTimestamp;
 
     const {
       principal: remainPrincipal,
       interest,
       penalty,
-    } = calculateFixedLoanRepayment(position);
+    } = calculateFixedLoanRepayment(
+      position,
+      matured ? position.end : undefined,
+      loanDecimals,
+    );
     const totalRepayNoPenalty = new Decimal(
       remainPrincipal + interest,
       loanDecimals,
