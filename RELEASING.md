@@ -57,6 +57,40 @@ The command prompts for the value, so the token does not enter shell history.
 
 ---
 
+## How the workflow authenticates, and what will change
+
+The release job currently publishes with **`secrets.NPM_TOKEN`**.
+`changesets/action` decides this for itself, in this order:
+
+1. `NPM_TOKEN` is set in the environment — use it, and stop.
+2. Otherwise, if GitHub can mint an OIDC token — use npm trusted publishing.
+
+Because the workflow sets `NPM_TOKEN`, branch 1 always wins and trusted
+publishing is never reached. Provenance attestation is unaffected either way:
+it comes from `id-token: write`, not from how the registry authenticates.
+
+A trusted publisher **is** configured on npm for both packages but has never
+been exercised, so it remains unvalidated.
+
+Two things will eventually force a move off the token:
+
+- **It expires.** Record the expiry when you create it. A token that lapses
+  unnoticed costs more than the release it blocks: recovering the npm account
+  needed a recovery code and a three-day publishing hold.
+- **npm is restricting tokens that bypass 2FA** — account changes since
+  August 2026, direct publishing from January 2027. The token in use is of
+  that kind, since package publishing access is set to "2FA **or** a granular
+  access token with bypass 2fa enabled". Confirm the scope against npm's own
+  documentation before relying on this date.
+
+**To switch to trusted publishing**, delete the `NPM_TOKEN` line from the
+`changesets/action` env block, leaving `NODE_AUTH_TOKEN`. Branch 2 then
+applies. The npm upgrade step must stay: OIDC publishing needs npm 11.5.1 or
+newer, and Node 20 ships 10.x. Do this on a release that is actually going
+out, so the trusted publisher validates on a real publish.
+
+---
+
 ## 1. Write a changeset
 
 On the branch carrying the change:
