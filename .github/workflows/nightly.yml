@@ -13,7 +13,40 @@ permissions:
   contents: read
 
 jobs:
+  # Everything below that touches a chain needs BSC_RPC_URL, and the repository
+  # does not have it yet. Without this gate the nightly mails "All jobs have
+  # failed" every morning for a configuration gap, and a report that is red by
+  # default is one nobody reads on the morning it means something.
+  #
+  # To turn the chain checks on, add BSC_RPC_URL (and ETH_RPC_URL for the
+  # Ethereum reads) under Settings → Secrets and variables → Actions. Use a key
+  # minted for CI rather than a personal one: this repository is public, and
+  # while secrets are not exposed to forked pull requests, any workflow on the
+  # default branch can reach them.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      bsc: ${{ steps.probe.outputs.bsc }}
+      eth: ${{ steps.probe.outputs.eth }}
+    steps:
+      - id: probe
+        env:
+          BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+        run: |
+          # Only ever tests emptiness — the values are never echoed.
+          for chain in bsc eth; do
+            var=$(echo "$chain" | tr '[:lower:]' '[:upper:]')_RPC_URL
+            if [ -n "${!var}" ]; then
+              echo "$chain=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$chain=false" >> "$GITHUB_OUTPUT"
+              echo "::notice title=$var is not set::Chain checks needing $var are skipped. Add it under Settings → Secrets and variables → Actions."
+            fi
+          done
+
   abi-conformance:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,15 +59,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # This one resolves selectors against bundled deployment data and needs
+      # no RPC, so it runs whether or not the secret is configured.
       - name: ABI selectors resolve on their deployments
         run: pnpm abi:conformance
       - name: Every public read returns a usable shape
+        if: needs.gate.outputs.bsc == 'true'
         run: pnpm read:surface
         env:
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
           ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
 
   fork-check:
+    needs: gate
+    if: needs.gate.outputs.bsc == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,6 +93,8 @@ jobs:
           BSC_RPC_URL: ${{ secrets.BSC_RPC_URL }}
 
   fork-flows:
+    needs: gate
+    if: needs.gate.outputs.bsc == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
